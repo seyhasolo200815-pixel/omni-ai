@@ -4,6 +4,34 @@ export const config = {
   maxDuration: 60,
 };
 
+function formatGeminiError(err: any): string {
+  const raw = err?.message || String(err || '');
+
+  if (
+    raw.includes('429') ||
+    raw.includes('RESOURCE_EXHAUSTED') ||
+    raw.includes('Quota exceeded')
+  ) {
+    return 'កូតាឥតគិតថ្លៃ (Free Tier Quota) របស់គណនី Gemini សម្រាប់ម៉ូដែល 3.8 Flash បានដល់កម្រិតកំណត់ប្រចាំថ្ងៃ (429 Rate Limit)។ សូមប្តូរទៅម៉ូដែល "3.5 Flash-Lite" នៅលើ Header ខាងលើ ដើម្បីបន្តការជជែកដោយសេរី ឬបន្ថែម Billing លើ Google Cloud Console។';
+  }
+
+  if (raw.includes('API_KEY_INVALID') || raw.includes('API key not valid')) {
+    return 'Google Gemini API Key មិនត្រឹមត្រូវឡើយ។ សូមពិនិត្យមើល API Key របស់អ្នកម្តងទៀតក្នុង Secrets។';
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed?.error?.message) {
+      return String(parsed.error.message).replace(/[\n\r]+/g, ' ').slice(0, 300);
+    }
+  } catch {}
+
+  return (
+    raw.replace(/[\n\r]+/g, ' ').slice(0, 300) ||
+    'មានបញ្ហាក្នុងការទាក់ទងទៅ Google Gemini API។ សូមព្យាយាមម្តងទៀត។'
+  );
+}
+
 export default async function handler(req: any, res: any) {
   // Universal CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -14,12 +42,18 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
-  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+  const apiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.API_KEY ||
+    process.env.GOOGLE_API_KEY ||
+    process.env.GOOGLE_GEMINI_API_KEY ||
+    process.env.VITE_GEMINI_API_KEY ||
+    '';
 
   if (!apiKey) {
     return res.status(500).json({
       error: true,
-      message: 'Google Gemini API Key មិនទាន់ត្រូវបានកំណត់នៅក្នុង Environment Variables (GEMINI_API_KEY ឬ API_KEY) ឡើយ។',
+      message: 'Google Gemini API Key មិនទាន់ត្រូវបានកំណត់នៅក្នុង Environment Variables ឡើយ។ សូមប្រាកដថាអ្នកបានបន្ថែម GEMINI_API_KEY ឬ GOOGLE_API_KEY នៅក្នុង Vercel Project Settings > Environment Variables។',
     });
   }
 
@@ -30,7 +64,7 @@ export default async function handler(req: any, res: any) {
     stream = true,
   } = req.body || {};
 
-  const selectedModel =
+  let selectedModel =
     model === '3.5-flash-lite' ? 'gemini-3.1-flash-lite' : 'gemini-3.8-flash';
 
   let level = ThinkingLevel.HIGH;
@@ -92,14 +126,35 @@ FORMATTING & RESPONSE RULES (MANDATORY):
 
   if (wantsJson) {
     try {
-      const response = await ai.models.generateContent({
-        model: selectedModel,
-        contents,
-        config: {
-          systemInstruction,
-          thinkingConfig: { thinkingLevel: level },
-        },
-      });
+      let response;
+      try {
+        response = await ai.models.generateContent({
+          model: selectedModel,
+          contents,
+          config: {
+            systemInstruction,
+            thinkingConfig: { thinkingLevel: level },
+          },
+        });
+      } catch (jsonErr: any) {
+        const rawMsg = String(jsonErr?.message || '');
+        if (
+          (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED')) &&
+          selectedModel === 'gemini-3.8-flash'
+        ) {
+          selectedModel = 'gemini-3.1-flash-lite';
+          response = await ai.models.generateContent({
+            model: selectedModel,
+            contents,
+            config: {
+              systemInstruction,
+              thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+            },
+          });
+        } else {
+          throw jsonErr;
+        }
+      }
 
       return res.status(200).json({
         content: response.text || '',
@@ -109,7 +164,7 @@ FORMATTING & RESPONSE RULES (MANDATORY):
       console.error('Gemini error:', err);
       return res.status(500).json({
         error: true,
-        message: err.message || 'មានបញ្ហាក្នុងការទាក់ទងទៅ Google Gemini API។',
+        message: formatGeminiError(err),
       });
     }
   }
@@ -125,16 +180,44 @@ FORMATTING & RESPONSE RULES (MANDATORY):
   };
 
   try {
-    const responseStream = await ai.models.generateContentStream({
-      model: selectedModel,
-      contents,
-      config: {
-        systemInstruction,
-        thinkingConfig: {
-          thinkingLevel: level,
+    let responseStream;
+
+    try {
+      responseStream = await ai.models.generateContentStream({
+        model: selectedModel,
+        contents,
+        config: {
+          systemInstruction,
+          thinkingConfig: {
+            thinkingLevel: level,
+          },
         },
-      },
-    });
+      });
+    } catch (initialErr: any) {
+      const rawErr = String(initialErr?.message || '');
+      if (
+        (rawErr.includes('429') || rawErr.includes('RESOURCE_EXHAUSTED') || rawErr.includes('Quota exceeded')) &&
+        selectedModel === 'gemini-3.8-flash'
+      ) {
+        sendSSE({
+          type: 'thought',
+          text: '⚠️ ម៉ូដែល Gemini 3.8 Flash បានដល់កម្រិតកំណត់កូតាឥតគិតថ្លៃប្រចាំថ្ងៃ (20 requests/day limit)។ ប្រព័ន្ធកំពុងប្តូរទៅម៉ូដែល Gemini 3.5 Flash-Lite ដោយស្វ័យប្រវត្ត...\n\n',
+        });
+        selectedModel = 'gemini-3.1-flash-lite';
+        responseStream = await ai.models.generateContentStream({
+          model: selectedModel,
+          contents,
+          config: {
+            systemInstruction,
+            thinkingConfig: {
+              thinkingLevel: ThinkingLevel.LOW,
+            },
+          },
+        });
+      } else {
+        throw initialErr;
+      }
+    }
 
     for await (const chunk of responseStream) {
       const candidate = chunk.candidates?.[0];
@@ -159,7 +242,7 @@ FORMATTING & RESPONSE RULES (MANDATORY):
     console.error('Streaming error on Vercel:', err);
     sendSSE({
       type: 'error',
-      message: err.message || 'មានបញ្ហាក្នុងការទាញយកចម្លើយពី Google Gemini។',
+      message: formatGeminiError(err),
     });
     res.end();
   }

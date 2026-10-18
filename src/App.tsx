@@ -128,14 +128,19 @@ export function useFetch<T>(url: string): FetchState<T> {
     }
   };
 
-  // Production-Ready Gemini Response Handler (Streaming + Fallback + Timeout)
-  const handleSendMessage = async (text: string, attachments: AttachedItem[]) => {
+  // Production-Ready Unified Message Handler (Text Chat + Image Generation + Video Generation)
+  const handleSendMessage = async (
+    text: string,
+    attachments: AttachedItem[] = [],
+    mode: 'chat' | 'image' | 'video' = 'chat'
+  ) => {
     if (!text.trim() && attachments.length === 0) return;
 
+    const trimmedText = text.trim();
     const userMessage: Message = {
       id: Math.random().toString(36).substring(7),
       sender: 'user',
-      content: text,
+      content: trimmedText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       attachments: attachments.length > 0 ? attachments : undefined,
     };
@@ -143,8 +148,210 @@ export function useFetch<T>(url: string): FetchState<T> {
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
 
-    // Prepare system message placeholder
     const aiMessageId = Math.random().toString(36).substring(7);
+
+    // -------------------------------------------------------------------------
+    // Route 1: Image Generation Intent (e.g. "គូររូប...", "/image", "បង្កើតរូបភាព...")
+    // -------------------------------------------------------------------------
+    const isImageIntent =
+      mode === 'image' ||
+      trimmedText.startsWith('/image') ||
+      trimmedText.startsWith('គូររូប') ||
+      trimmedText.startsWith('បង្កើតរូបភាព') ||
+      /^(draw|generate image|create image|paint)\b/i.test(trimmedText);
+
+    if (isImageIntent) {
+      const cleanPrompt = trimmedText
+        .replace(/^(\/image|គូររូប:?|បង្កើតរូបភាព:?|draw a|draw an|generate image of|create image of)\s*/i, '')
+        .trim() || trimmedText;
+
+      const systemPlaceholder: Message = {
+        id: aiMessageId,
+        sender: 'system',
+        content: '',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        isStreaming: true,
+        generationType: 'image',
+      };
+
+      setMessages((prev) => [...prev, systemPlaceholder]);
+      setIsLoading(true);
+
+      try {
+        const res = await fetch('/api/generate-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: cleanPrompt,
+            aspectRatio: '1:1',
+            style: 'realistic',
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.error || !data.imageUrl) {
+          throw new Error(data.message || 'មិនអាចបង្កើតរូបភាពបានទេ។');
+        }
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMessageId
+              ? {
+                  ...m,
+                  content: `នេះជារូបភាពដែល Omni AI បានបង្កើតជូនអ្នកតាមការពិពណ៌នា៖ **"${cleanPrompt}"**`,
+                  generatedImage: {
+                    url: data.imageUrl,
+                    prompt: cleanPrompt,
+                    aspectRatio: data.aspectRatio || '1:1',
+                  },
+                  isStreaming: false,
+                  generationType: 'image',
+                }
+              : m
+          )
+        );
+      } catch (err: any) {
+        console.error('Image generation error in chat:', err);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMessageId
+              ? {
+                  ...m,
+                  content: err?.message || 'មានបញ្ហាក្នុងការបង្កើតរូបភាព។',
+                  error: true,
+                  isStreaming: false,
+                }
+              : m
+          )
+        );
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Route 2: Video Generation Intent (e.g. "បង្កើតវីដេអូ...", "/video", "ធ្វើវីដេអូ...")
+    // -------------------------------------------------------------------------
+    const isVideoIntent =
+      mode === 'video' ||
+      trimmedText.startsWith('/video') ||
+      trimmedText.startsWith('បង្កើតវីដេអូ') ||
+      trimmedText.startsWith('ធ្វើវីដេអូ') ||
+      /^(generate video|create video|make video)\b/i.test(trimmedText);
+
+    if (isVideoIntent) {
+      const cleanPrompt = trimmedText
+        .replace(/^(\/video|បង្កើតវីដេអូ:?|ធ្វើវីដេអូ:?|generate video of|create video of)\s*/i, '')
+        .trim() || trimmedText;
+
+      const systemPlaceholder: Message = {
+        id: aiMessageId,
+        sender: 'system',
+        content: `ម៉ាស៊ីន AI Veo កំពុង Render វីដេអូតាមការពិពណ៌នារបស់អ្នក...`,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        generationType: 'video',
+        generatedVideo: {
+          prompt: cleanPrompt,
+          status: 'generating',
+          aspectRatio: '16:9',
+        },
+      };
+
+      setMessages((prev) => [...prev, systemPlaceholder]);
+      setIsLoading(true);
+
+      try {
+        const res = await fetch('/api/generate-video', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            prompt: cleanPrompt,
+            aspectRatio: '16:9',
+            resolution: '720p',
+          }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || data.error) {
+          throw new Error(data.message || 'មិនអាចចាប់ផ្តើមបង្កើតវីដេអូបានទេ។');
+        }
+
+        const operationName = data.operationName;
+
+        // Poll video operation status
+        let isDone = false;
+        let attempts = 0;
+        while (!isDone && attempts < 25) {
+          await new Promise((r) => setTimeout(r, 6000));
+          attempts++;
+
+          const pollRes = await fetch('/api/video-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ operationName }),
+          });
+
+          const pollData = await pollRes.json();
+          if (pollData.done) {
+            isDone = true;
+            break;
+          }
+          if (pollData.error) {
+            throw new Error(pollData.error.message || 'បរាជ័យក្នុងការ Render វីដេអូ');
+          }
+        }
+
+        const videoDownloadUrl = `/api/video-download?operationName=${encodeURIComponent(operationName)}`;
+
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMessageId
+              ? {
+                  ...m,
+                  content: `នេះជាវីដេអូដែល Omni AI (Veo) បានបង្កើតជូនអ្នក៖ **"${cleanPrompt}"**`,
+                  generatedVideo: {
+                    url: videoDownloadUrl,
+                    prompt: cleanPrompt,
+                    status: 'ready',
+                    aspectRatio: '16:9',
+                  },
+                }
+              : m
+          )
+        );
+      } catch (err: any) {
+        console.warn('Video generation error/demo fallback in chat:', err);
+        const errMsg = err?.message || '';
+
+        // If Veo quota hit, provide clear note & demonstration video player
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === aiMessageId
+              ? {
+                  ...m,
+                  content: errMsg.includes('Quota') || errMsg.includes('429') || errMsg.includes('403')
+                    ? `⚠️ គណនី Gemini មិនទាន់មាន Quota សម្រាប់ម៉ូដែល Veo ឡើយ (ទាមទារ Google Cloud Paid Tier)។ នេះជាវីដេអូគំរូសម្រាប់ទស្សនា៖`
+                    : `មានបញ្ហាក្នុងការបង្កើតវីដេអូ៖ ${errMsg}`,
+                  generatedVideo: {
+                    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+                    prompt: cleanPrompt,
+                    status: 'ready',
+                    aspectRatio: '16:9',
+                  },
+                }
+              : m
+          )
+        );
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // Route 3: Standard Conversational Streaming Chat with Gemini 3.8 / 3.5
+    // -------------------------------------------------------------------------
     const systemPlaceholder: Message = {
       id: aiMessageId,
       sender: 'system',
@@ -152,6 +359,7 @@ export function useFetch<T>(url: string): FetchState<T> {
       thought: '',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       isStreaming: true,
+      generationType: 'text',
     };
 
     setMessages((prev) => [...prev, systemPlaceholder]);
@@ -161,7 +369,6 @@ export function useFetch<T>(url: string): FetchState<T> {
     const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s safety timeout
 
     try {
-      // 1. Try Streaming SSE first
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
@@ -178,7 +385,6 @@ export function useFetch<T>(url: string): FetchState<T> {
 
       clearTimeout(timeoutId);
 
-      // Handle non-200 responses cleanly
       if (!response.ok) {
         let errorMsg = `Server error (${response.status})`;
         try {
@@ -187,13 +393,11 @@ export function useFetch<T>(url: string): FetchState<T> {
             errorMsg = errData.message;
           }
         } catch {
-          // fallback to status text
           errorMsg = response.statusText || errorMsg;
         }
         throw new Error(errorMsg);
       }
 
-      // Process stream
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
 
@@ -246,23 +450,34 @@ export function useFetch<T>(url: string): FetchState<T> {
                   )
                 );
               } else if (event.type === 'error') {
-                throw new Error(event.message || 'Error occurred during streaming');
+                const errMsg = event.message || 'កំហុសពី Google Gemini API';
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMessageId
+                      ? {
+                          ...m,
+                          content: errMsg,
+                          error: true,
+                          isStreaming: false,
+                        }
+                      : m
+                  )
+                );
+                return;
               }
             } catch (err) {
-              console.error('Failed to parse SSE line:', line, err);
+              console.warn('Could not parse SSE line:', line, err);
             }
           }
         }
       }
 
-      // Stream successfully completed
       setMessages((prev) =>
         prev.map((m) => (m.id === aiMessageId ? { ...m, isStreaming: false } : m))
       );
     } catch (primaryError: any) {
       console.warn('Streaming failed, attempting JSON fallback...', primaryError);
 
-      // 2. Production Fallback: Standard JSON request if SSE was blocked or buffered
       try {
         const fallbackRes = await fetch('/api/chat', {
           method: 'POST',
@@ -298,7 +513,6 @@ export function useFetch<T>(url: string): FetchState<T> {
         console.error('Fallback also failed:', fallbackErr);
       }
 
-      // If both streaming and fallback failed, display clear error message to user
       const isTimeout = primaryError?.name === 'AbortError';
       const displayMsg = isTimeout
         ? 'ការតភ្ជាប់លើសពេលវេលាកំណត់ (Timeout)។ សូមព្យាយាមម្តងទៀត។'
@@ -324,11 +538,9 @@ export function useFetch<T>(url: string): FetchState<T> {
   };
 
   const handleRegenerate = () => {
-    // Find last user message
     const lastUserIdx = messages.map((m) => m.sender).lastIndexOf('user');
     if (lastUserIdx !== -1) {
       const lastUserMsg = messages[lastUserIdx];
-      // Trim messages up to that user message, then re-send
       const priorMessages = messages.slice(0, lastUserIdx);
       setMessages(priorMessages);
       handleSendMessage(lastUserMsg.content, lastUserMsg.attachments || []);
@@ -378,6 +590,8 @@ export function useFetch<T>(url: string): FetchState<T> {
               selectedModelName={
                 selectedModel === '3.8-flash' ? 'Gemini 3.8 Flash' : 'Gemini 3.5 Flash-Lite'
               }
+              onOpenVideoStudio={() => setActiveView('video')}
+              onOpenImageStudio={() => setActiveView('images')}
             />
           )}
 

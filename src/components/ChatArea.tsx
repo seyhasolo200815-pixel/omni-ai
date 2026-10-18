@@ -9,11 +9,34 @@ import {
   ChevronDown,
   ChevronRight,
   Brain,
-  AlertCircle
+  AlertCircle,
+  Download,
+  Maximize2,
+  Play,
+  Pause,
+  Video,
+  Film,
+  X,
+  Share2
 } from 'lucide-react';
 import { marked } from 'marked';
 import { Composer, AttachedItem } from './Composer';
 import { OmniLogo } from './OmniLogo';
+
+export interface GeneratedImageData {
+  url: string;
+  prompt: string;
+  aspectRatio?: string;
+}
+
+export interface GeneratedVideoData {
+  url?: string;
+  operationName?: string;
+  prompt: string;
+  aspectRatio?: string;
+  status: 'generating' | 'ready' | 'error';
+  error?: string;
+}
 
 export interface Message {
   id: string;
@@ -24,14 +47,19 @@ export interface Message {
   isStreaming?: boolean;
   error?: boolean;
   attachments?: AttachedItem[];
+  generatedImage?: GeneratedImageData;
+  generatedVideo?: GeneratedVideoData;
+  generationType?: 'text' | 'image' | 'video';
 }
 
 interface ChatAreaProps {
   messages: Message[];
-  onSendMessage: (text: string, attachments: AttachedItem[]) => void;
+  onSendMessage: (text: string, attachments: AttachedItem[], mode?: 'chat' | 'image' | 'video') => void;
   onRegenerate?: () => void;
   isLoading?: boolean;
   selectedModelName?: string;
+  onOpenVideoStudio?: () => void;
+  onOpenImageStudio?: () => void;
 }
 
 export const ChatArea: React.FC<ChatAreaProps> = ({
@@ -40,10 +68,13 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onRegenerate,
   isLoading = false,
   selectedModelName = 'Gemini 3.8 Flash',
+  onOpenVideoStudio,
+  onOpenImageStudio,
 }) => {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
   const [openThoughts, setOpenThoughts] = useState<Record<string, boolean>>({});
+  const [activeModalImage, setActiveModalImage] = useState<GeneratedImageData | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom on new message or stream chunk
@@ -82,23 +113,31 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
   const isEmpty = messages.length === 0;
 
-  // Quick suggestion prompts for user testing
+  // Rich suggestion cards showcasing Reasoning, Image, and Video Generation
   const suggestions = [
     {
-      title: 'វិភាគកូដ React & TypeScript',
+      type: 'image',
+      icon: <Sparkles size={16} className="text-blue-600" />,
+      title: 'គូររូបភាព AI (Image Generation)',
+      prompt: 'គូររូប: ប្រាសាទអង្គរវត្តនាពេលថ្ងៃរះពណ៌មាស រំលេចពន្លឺចាំងលើផ្ទៃទឹកត្រពាំង',
+    },
+    {
+      type: 'video',
+      icon: <Video size={16} className="text-purple-600" />,
+      title: 'បង្កើតវីដេអូ AI (Veo Video Generation)',
+      prompt: 'បង្កើតវីដេអូ: រថយន្តទំនើបបើកបរលើផ្លូវភ្លើងពណ៌ Neon ពេលរាត្រីក្នុងរចនាប័ទ្មភាពយន្ត 16:9',
+    },
+    {
+      type: 'chat',
+      icon: <Brain size={16} className="text-indigo-600" />,
+      title: 'វិភាគកូដ React 19 & TypeScript',
       prompt: 'សូមពន្យល់ពីគន្លឹះ Optimize Performance ក្នុង React 19 និង TypeScript ជាមួយនឹងកូដគំរូ',
     },
     {
+      type: 'chat',
+      icon: <Sparkles size={16} className="text-amber-600" />,
       title: 'សរសេរអត្ថបទទីផ្សារ (Copywriting)',
       prompt: 'សូមជួយសរសេរ Copywriting ទាក់ទាញសម្រាប់យុទ្ធនាការបើកលក់ផលិតផលបច្ចេកវិទ្យាថ្មីជាភាសាខ្មែរ',
-    },
-    {
-      title: 'ដោះស្រាយ និងពន្យល់បញ្ហាស្មុគស្មាញ',
-      prompt: 'តើ Google Gemini ដំណើរការ Thinking Process យ៉ាងដូចម្តេចដើម្បីវិភាគបញ្ហាស្មុគស្មាញ?',
-    },
-    {
-      title: 'រៀបចំយុទ្ធសាស្ត្រអាជីវកម្ម',
-      prompt: 'សូមរៀបចំផែនការអាជីវកម្ម Digital Startup នៅកម្ពុជាសម្រាប់រយៈពេល ១ ឆ្នាំដំបូង',
     },
   ];
 
@@ -108,7 +147,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
         /* Empty Welcome Screen: Spacious, centered, minimalist with quick prompts */
         <div className="flex-1 flex flex-col items-center justify-center px-4 w-full max-w-4xl mx-auto -mt-6">
           {/* Centered Omni Logo & Welcome Heading */}
-          <div className="text-center mb-7 select-none">
+          <div className="text-center mb-6 select-none">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center mx-auto mb-4 shadow-md border border-indigo-900/40">
               <OmniLogo size={36} />
             </div>
@@ -116,13 +155,19 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               តើថ្ងៃនេះខ្ញុំអាចជួយអ្វីអ្នកបានខ្លះ?
             </h1>
             <p className="text-xs text-zinc-600 mt-1.5 font-medium">
-              ដំណើរការដោយខួរក្បាលឆ្លាតវៃពិតប្រាកដរបស់ Google {selectedModelName}
+              ដំណើរការដោយខួរក្បាលឆ្លាតវៃពិតប្រាកដរបស់ Google Gemini & Veo (អត្ថបទ · រូបភាព · វីដេអូ)
             </p>
           </div>
 
           {/* Centered Composer */}
           <div className="w-full">
-            <Composer onSendMessage={onSendMessage} isInitialCentered={true} disabled={isLoading} />
+            <Composer
+              onSendMessage={onSendMessage}
+              isInitialCentered={true}
+              disabled={isLoading}
+              onOpenVideoStudio={onOpenVideoStudio}
+              onOpenImageStudio={onOpenImageStudio}
+            />
           </div>
 
           {/* Clean Suggestion Cards */}
@@ -131,13 +176,18 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               <button
                 key={idx}
                 onClick={() => onSendMessage(sug.prompt, [])}
-                className="p-3 text-left border border-zinc-300 rounded-2xl hover:border-zinc-400 hover:bg-[#f8f8fa] transition-all group shadow-2xs"
+                className="p-3 text-left border border-zinc-200/90 rounded-2xl hover:border-zinc-400 hover:bg-[#f8f8fa] transition-all group shadow-2xs bg-white flex items-start gap-2.5"
               >
-                <div className="text-[13.5px] font-bold text-black group-hover:text-black truncate">
-                  {sug.title}
+                <div className="p-1.5 rounded-lg bg-zinc-100 group-hover:bg-white transition-colors shrink-0 mt-0.5">
+                  {sug.icon}
                 </div>
-                <div className="text-[12px] text-zinc-600 font-normal line-clamp-1 mt-0.5">
-                  {sug.prompt}
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px] font-bold text-zinc-900 group-hover:text-black truncate">
+                    {sug.title}
+                  </div>
+                  <div className="text-[12px] text-zinc-600 font-normal line-clamp-1 mt-0.5">
+                    {sug.prompt}
+                  </div>
                 </div>
               </button>
             ))}
@@ -177,7 +227,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         )}
 
                         {/* User Message Bubble */}
-                        <div className="bg-[#f0f0f2] text-black font-medium rounded-[20px] px-4 py-2.5 text-[15.5px] leading-relaxed shadow-2xs inline-block text-left break-words">
+                        <div className="bg-[#f0f0f2] text-black font-semibold rounded-[20px] px-4 py-2.5 text-[15px] leading-relaxed shadow-2xs inline-block text-left break-words">
                           {msg.content}
                         </div>
 
@@ -198,7 +248,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                       </div>
                     </div>
                   ) : (
-                    /* System / Omni AI Message Row with Fluid Typing Effect */
+                    /* System / Omni AI Message Row */
                     <AssistantMessageItem
                       key={msg.id}
                       msg={msg}
@@ -209,6 +259,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                       onSpeak={() => handleSpeak(msg.content, msg.id)}
                       isSpeaking={speakingId === msg.id}
                       onRegenerate={onRegenerate}
+                      onOpenImageModal={(data) => setActiveModalImage(data)}
                     />
                   )}
                 </div>
@@ -219,7 +270,63 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
           {/* Bottom Fixed Composer */}
           <div className="w-full bg-white pt-2 border-t border-transparent">
-            <Composer onSendMessage={onSendMessage} isInitialCentered={false} disabled={isLoading} />
+            <Composer
+              onSendMessage={onSendMessage}
+              isInitialCentered={false}
+              disabled={isLoading}
+              onOpenVideoStudio={onOpenVideoStudio}
+              onOpenImageStudio={onOpenImageStudio}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen Image Preview Modal */}
+      {activeModalImage && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="relative max-w-4xl w-full bg-zinc-950 rounded-2xl overflow-hidden shadow-2xl border border-zinc-800 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between p-4 border-b border-zinc-800 text-white">
+              <div className="flex items-center gap-2">
+                <Sparkles size={16} className="text-blue-400" />
+                <span className="text-xs font-semibold">រូបភាពបង្កើតដោយ Google Gemini</span>
+                {activeModalImage.aspectRatio && (
+                  <span className="px-2 py-0.5 rounded text-[11px] bg-zinc-800 text-zinc-300 font-mono">
+                    {activeModalImage.aspectRatio}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={activeModalImage.url}
+                  download="omni-ai-image.png"
+                  className="px-3 py-1.5 rounded-lg bg-white text-black hover:bg-zinc-200 text-xs font-medium inline-flex items-center gap-1.5 transition-colors"
+                >
+                  <Download size={13} />
+                  <span>ទាញយករូបភាព</span>
+                </a>
+                <button
+                  onClick={() => setActiveModalImage(null)}
+                  className="p-1.5 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg"
+                >
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center bg-zinc-900/50">
+              <img
+                src={activeModalImage.url}
+                alt={activeModalImage.prompt}
+                className="max-h-[68vh] w-auto max-w-full rounded-xl object-contain shadow-lg"
+              />
+            </div>
+
+            {activeModalImage.prompt && (
+              <div className="p-3.5 bg-zinc-900 border-t border-zinc-800 text-zinc-300 text-xs font-medium">
+                <span className="text-zinc-500 font-normal">Prompt: </span>
+                {activeModalImage.prompt}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -236,6 +343,7 @@ interface AssistantMessageItemProps {
   onSpeak: () => void;
   isSpeaking: boolean;
   onRegenerate?: () => void;
+  onOpenImageModal: (data: GeneratedImageData) => void;
 }
 
 const AssistantMessageItem: React.FC<AssistantMessageItemProps> = ({
@@ -247,37 +355,13 @@ const AssistantMessageItem: React.FC<AssistantMessageItemProps> = ({
   onSpeak,
   isSpeaking,
   onRegenerate,
+  onOpenImageModal,
 }) => {
-  // Fluid typing effect state
-  const [displayedText, setDisplayedText] = useState(msg.content || '');
-  const targetTextRef = useRef(msg.content || '');
-  targetTextRef.current = msg.content || '';
+  const isImageGen = msg.generationType === 'image' || !!msg.generatedImage;
+  const isVideoGen = msg.generationType === 'video' || !!msg.generatedVideo;
 
-  // Typewriter interpolator
-  useEffect(() => {
-    if (!msg.isStreaming) {
-      setDisplayedText(msg.content || '');
-      return;
-    }
-
-    // High frequency ticker (~60 updates/sec)
-    const interval = setInterval(() => {
-      const target = targetTextRef.current;
-      setDisplayedText((prev) => {
-        if (prev.length >= target.length) {
-          return target;
-        }
-        // Adaptive step: smooth character-by-character rollout
-        const diff = target.length - prev.length;
-        const step = diff > 90 ? 12 : diff > 40 ? 6 : diff > 15 ? 3 : 1;
-        return target.slice(0, prev.length + step);
-      });
-    }, 16);
-
-    return () => clearInterval(interval);
-  }, [msg.isStreaming]);
-
-  const isThinkingOnly = msg.isStreaming && !displayedText && !msg.thought;
+  // Show thinking indicator only while waiting for initial content
+  const isThinkingOnly = msg.isStreaming && !msg.content && !msg.thought && !msg.generatedImage && !msg.generatedVideo;
 
   return (
     <div className="flex items-start gap-3.5">
@@ -296,7 +380,7 @@ const AssistantMessageItem: React.FC<AssistantMessageItemProps> = ({
             >
               <div className="flex items-center gap-2">
                 <Brain size={14} className="text-purple-600" />
-                <span className="text-xs font-medium text-zinc-700">
+                <span className="text-xs font-semibold text-zinc-800">
                   ដំណើរការគិត (Thinking Process)
                 </span>
                 {msg.isStreaming && !msg.content && (
@@ -318,12 +402,18 @@ const AssistantMessageItem: React.FC<AssistantMessageItemProps> = ({
           </div>
         )}
 
-        {/* Initial Thinking Indicator: Omni Logo + Bouncing Typing Dots (No Black Circle!) */}
+        {/* Initial Thinking Indicator */}
         {isThinkingOnly && (
-          <div className="flex items-center gap-2.5 py-1 text-zinc-800 text-xs font-medium">
+          <div className="flex items-center gap-2.5 py-1 text-zinc-900 text-xs font-semibold">
             <OmniLogo size={18} animated={true} className="shrink-0" />
             <div className="flex items-center gap-1.5">
-              <span>Omni AI កំពុងគិត</span>
+              <span>
+                {isImageGen
+                  ? 'Omni AI កំពុងគូររូបភាព...'
+                  : isVideoGen
+                  ? 'Omni AI កំពុងបង្កើតវីដេអូជាមួយ Veo...'
+                  : 'Omni AI កំពុងគិត'}
+              </span>
               <span className="inline-flex items-center gap-1 ml-0.5">
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:-0.3s]" />
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-bounce [animation-delay:-0.15s]" />
@@ -335,19 +425,77 @@ const AssistantMessageItem: React.FC<AssistantMessageItemProps> = ({
 
         {/* Error Notice */}
         {msg.error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 flex items-center gap-2">
-            <AlertCircle size={15} className="shrink-0" />
+          <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 font-medium flex items-center gap-2.5">
+            <AlertCircle size={16} className="shrink-0 text-red-600" />
             <span>{msg.content}</span>
           </div>
         )}
 
-        {/* Rendered Markdown with Fluid Typing Animation & Blinking Cursor */}
-        {!msg.error && displayedText && (
+        {/* Generated Image Card */}
+        {msg.generatedImage && (
+          <div className="rounded-2xl border border-zinc-200 overflow-hidden bg-white shadow-sm max-w-lg">
+            <div className="relative group cursor-pointer" onClick={() => onOpenImageModal(msg.generatedImage!)}>
+              <img
+                src={msg.generatedImage.url}
+                alt={msg.generatedImage.prompt}
+                className="w-full h-auto object-cover max-h-[450px]"
+              />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenImageModal(msg.generatedImage!);
+                  }}
+                  className="p-2.5 bg-white/90 hover:bg-white text-zinc-900 rounded-full shadow-lg transition-transform hover:scale-105"
+                  title="ពង្រីកពេញអេក្រង់"
+                >
+                  <Maximize2 size={16} />
+                </button>
+                <a
+                  href={msg.generatedImage.url}
+                  download="omni-ai-image.png"
+                  onClick={(e) => e.stopPropagation()}
+                  className="p-2.5 bg-white/90 hover:bg-white text-zinc-900 rounded-full shadow-lg transition-transform hover:scale-105"
+                  title="ទាញយករូបភាព"
+                >
+                  <Download size={16} />
+                </a>
+              </div>
+            </div>
+
+            <div className="p-3 border-t border-zinc-100 bg-[#fafafa] flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 truncate pr-2">
+                <span className="inline-flex items-center gap-1 font-semibold text-blue-600">
+                  <Sparkles size={12} />
+                  <span>Gemini Image</span>
+                </span>
+                <span className="text-zinc-600 truncate">{msg.generatedImage.prompt}</span>
+              </div>
+              <a
+                href={msg.generatedImage.url}
+                download="omni-ai-image.png"
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 text-[11px] font-semibold transition-colors shrink-0"
+              >
+                <Download size={12} />
+                <span>ទាញយក</span>
+              </a>
+            </div>
+          </div>
+        )}
+
+        {/* Generated Video Card */}
+        {msg.generatedVideo && (
+          <VideoMessageCard videoData={msg.generatedVideo} />
+        )}
+
+        {/* Rendered Markdown Text */}
+        {!msg.error && msg.content && (
           <div className="relative">
             <div
-              className="text-[15.5px] leading-relaxed text-zinc-900 prose prose-zinc max-w-none break-words"
+              className="text-[15.5px] leading-relaxed text-zinc-900 font-medium prose prose-zinc max-w-none break-words"
               dangerouslySetInnerHTML={{
-                __html: marked.parse(displayedText),
+                __html: marked.parse(msg.content),
               }}
             />
             {msg.isStreaming && (
@@ -356,46 +504,148 @@ const AssistantMessageItem: React.FC<AssistantMessageItemProps> = ({
           </div>
         )}
 
-        {/* Actions underneath AI response (Visible after streaming completes) */}
-        {!msg.isStreaming && !msg.error && msg.content && (
-          <div className="flex items-center gap-2 pt-1 text-zinc-400 text-xs">
-            <button
-              onClick={onCopy}
-              className="p-1.5 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors flex items-center gap-1"
-              title="ចម្លងចម្លើយ"
-            >
-              {isCopied ? (
-                <>
-                  <Check size={14} className="text-emerald-600" />
-                  <span className="text-[11px] text-emerald-600 font-medium">បានចម្លង</span>
-                </>
-              ) : (
-                <Copy size={14} />
-              )}
-            </button>
+        {/* Actions underneath AI response */}
+        {!msg.isStreaming && !msg.error && (msg.content || msg.generatedImage || msg.generatedVideo) && (
+          <div className="flex items-center gap-2 pt-1 text-zinc-500 text-xs">
+            {msg.content && (
+              <button
+                onClick={onCopy}
+                className="p-1.5 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors flex items-center gap-1 font-medium"
+                title="ចម្លងចម្លើយ"
+              >
+                {isCopied ? (
+                  <>
+                    <Check size={14} className="text-emerald-600" />
+                    <span className="text-[11px] text-emerald-600 font-semibold">បានចម្លង</span>
+                  </>
+                ) : (
+                  <Copy size={14} />
+                )}
+              </button>
+            )}
 
-            <button
-              onClick={onSpeak}
-              className={`p-1.5 rounded-lg transition-colors ${
-                isSpeaking
-                  ? 'text-blue-600 bg-blue-50'
-                  : 'hover:text-zinc-900 hover:bg-zinc-100'
-              }`}
-              title={isSpeaking ? 'បញ្ឈប់ការអាន' : 'អានឮៗ'}
-            >
-              {isSpeaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
-            </button>
+            {msg.content && (
+              <button
+                onClick={onSpeak}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  isSpeaking
+                    ? 'text-blue-600 bg-blue-50'
+                    : 'hover:text-zinc-900 hover:bg-zinc-100'
+                }`}
+                title={isSpeaking ? 'បញ្ឈប់ការអាន' : 'អានឮៗ'}
+              >
+                {isSpeaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
+              </button>
+            )}
 
             {onRegenerate && (
               <button
                 onClick={onRegenerate}
-                className="p-1.5 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors flex items-center gap-1"
+                className="p-1.5 hover:text-zinc-900 hover:bg-zinc-100 rounded-lg transition-colors flex items-center gap-1 font-medium"
                 title="បង្កើតចម្លើយឡើងវិញ"
               >
                 <RotateCw size={14} />
               </button>
             )}
           </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// Interactive Video Message Player Card
+const VideoMessageCard: React.FC<{ videoData: GeneratedVideoData }> = ({ videoData }) => {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  const togglePlay = () => {
+    if (videoRef.current) {
+      if (isPlaying) {
+        videoRef.current.pause();
+        setIsPlaying(false);
+      } else {
+        videoRef.current.play();
+        setIsPlaying(true);
+      }
+    }
+  };
+
+  if (videoData.status === 'generating') {
+    return (
+      <div className="rounded-2xl border border-purple-200 bg-gradient-to-br from-purple-50/70 to-indigo-50/50 p-5 max-w-lg">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="w-9 h-9 rounded-xl bg-purple-600 text-white flex items-center justify-center animate-pulse">
+            <Film size={18} />
+          </div>
+          <div>
+            <div className="text-sm font-bold text-zinc-900">
+              ម៉ាស៊ីន AI Veo កំពុង Render វីដេអូ...
+            </div>
+            <div className="text-xs text-zinc-600">
+              ដំណើរការ Text-to-Video គុណភាពខ្ពស់ 1080p
+            </div>
+          </div>
+        </div>
+
+        <div className="w-full bg-purple-200/60 rounded-full h-1.5 overflow-hidden mb-3">
+          <div className="bg-purple-600 h-full w-2/3 animate-[pulse_1.5s_infinite]" />
+        </div>
+
+        <p className="text-xs text-zinc-700 italic font-medium">
+          "{videoData.prompt}"
+        </p>
+      </div>
+    );
+  }
+
+  if (videoData.status === 'error') {
+    return (
+      <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 font-medium flex items-center gap-2.5 max-w-lg">
+        <AlertCircle size={16} className="text-red-600 shrink-0" />
+        <span>{videoData.error || 'មានបញ្ហាក្នុងការបង្កើតវីដេអូ'}</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-zinc-200 overflow-hidden bg-black shadow-md max-w-lg">
+      <div className="relative group aspect-video bg-black flex items-center justify-center">
+        {videoData.url ? (
+          <video
+            ref={videoRef}
+            src={videoData.url}
+            className="w-full h-full object-contain"
+            controls
+            playsInline
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+          />
+        ) : (
+          <div className="text-white text-xs flex items-center gap-2">
+            <Video size={16} />
+            <span>វីដេអូកំពុងរៀបចំ...</span>
+          </div>
+        )}
+      </div>
+
+      <div className="p-3 bg-[#18181b] border-t border-zinc-800 flex items-center justify-between text-xs text-zinc-200">
+        <div className="flex items-center gap-2 truncate pr-2">
+          <span className="inline-flex items-center gap-1 font-semibold text-purple-400">
+            <Video size={13} />
+            <span>Veo Video</span>
+          </span>
+          <span className="text-zinc-400 truncate">{videoData.prompt}</span>
+        </div>
+        {videoData.url && (
+          <a
+            href={videoData.url}
+            download="omni-ai-video.mp4"
+            className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-white text-black hover:bg-zinc-200 text-xs font-semibold transition-colors shrink-0"
+          >
+            <Download size={12} />
+            <span>ទាញយក MP4</span>
+          </a>
         )}
       </div>
     </div>
