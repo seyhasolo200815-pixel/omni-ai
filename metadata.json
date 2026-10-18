@@ -1,0 +1,6 @@
+{
+  "name": "Omni AI",
+  "description": "ចំណុចប្រទាក់ឆ្លាតវៃ Omni AI ដ៏សាមញ្ញ និងទំនើប បង្កើតឡើងយ៉ាងផ្ចិតផ្ចង់ស្រដៀងនឹង ChatGPT",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
