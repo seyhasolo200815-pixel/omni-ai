@@ -64,15 +64,15 @@ export const Header: React.FC<HeaderProps> = ({
     { name: string; subtitle: string; desc: string; icon: any }
   > = {
     '3.8-flash': {
-      name: 'Gemini 3.8 Flash',
-      subtitle: 'ការឆ្លើយតបកម្រិតខ្ពស់ & ការគិតស៊ីជម្រៅ',
-      desc: 'គំរូដ៏ឆ្លាតវៃបំផុតសម្រាប់ការវិភាគស៊ីជម្រៅ ការសរសេរ និងការដោះស្រាយបញ្ហាស្មុគស្មាញ',
+      name: 'Omni 5.5',
+      subtitle: 'ម៉ូដែលគោល (Active Model)',
+      desc: 'ម៉ូដែលឆ្លាតវៃកម្រិតខ្ពស់បំផុត បំពាក់នូវសមត្ថភាពគិតវិភាគស៊ីជម្រៅ ការដោះស្រាយបញ្ហា និងការសរសេរកូដស្មុគស្មាញ (ស្វ័យប្រវត្តិ Fallback បើជួបបន្ទុកខ្ពស់)',
       icon: Sparkles,
     },
     '3.5-flash-lite': {
-      name: 'Gemini 3.5 Flash-Lite',
-      subtitle: 'ល្បឿនលឿន & សន្សំសំចៃ',
-      desc: 'គំរូឆ្លើយតបរហ័សទាន់ចិត្ត សន្សំសំចៃ និងសមស្របសម្រាប់ការសន្ទនាប្រចាំថ្ងៃ',
+      name: 'Omni Flash',
+      subtitle: 'ម៉ូដែលល្បឿនលឿន (Fast & Resilient)',
+      desc: 'ម៉ូដែលល្បឿនលឿនទាន់ចិត្ត និងមានស្ថិរភាពខ្ពស់ ឆ្លើយតបភ្លាមៗដោយគ្មានការរង់ចាំ និងជាម៉ូដែលបម្រុងស្វ័យប្រវត្តិ',
       icon: Zap,
     },
   };
@@ -80,15 +80,15 @@ export const Header: React.FC<HeaderProps> = ({
   const thinkingLabels: Record<ThinkingLevelType, { label: string; desc: string }> = {
     high: {
       label: 'ខ្ពស់ (High)',
-      desc: 'ដំណើរការគិតអតិបរមាសម្រាប់ការវិភាគស៊ីជម្រៅ និងកូដស្មុគស្មាញ',
+      desc: 'គិតស៊ីជម្រៅ និងជាក់លាក់ខ្ពស់',
     },
     medium: {
       label: 'មធ្យម (Medium)',
-      desc: 'តុល្យភាពសមស្របរវាងជម្រៅនៃការគិត និងល្បឿនឆ្លើយតប',
+      desc: 'ល្បឿន និងភាពត្រឹមត្រូវសមតុល្យ',
     },
     low: {
       label: 'ទាប (Low)',
-      desc: 'ផ្តោតលើល្បឿនឆ្លើយតបរហ័សបំផុត និងកាត់បន្ថយពេលវេលារង់ចាំ',
+      desc: 'ឆ្លើយតបលឿនបំផុត',
     },
   };
 
@@ -143,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
           {modelDropdownOpen && (
             <div className="absolute top-full left-0 mt-1.5 w-80 sm:w-88 bg-white rounded-2xl shadow-xl border border-zinc-200 p-2 z-50 text-[13px] animate-in fade-in zoom-in-95 duration-150">
               <div className="px-2.5 py-1.5 text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">
-                ជ្រើសរើសម៉ូដែល GOOGLE GEMINI
+                ជ្រើសរើសម៉ូដែល OMNI AI
               </div>
 
               {/* 3.8 Flash */}

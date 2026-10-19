@@ -4,7 +4,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Sidebar, ActiveView } from './components/Sidebar';
+import { Sidebar, ActiveView, ChatHistoryItem } from './components/Sidebar';
 import { Header, GeminiModelType, ThinkingLevelType } from './components/Header';
 import { ChatArea, Message } from './components/ChatArea';
 import { VideoPlaceholder } from './components/VideoPlaceholder';
@@ -15,6 +15,117 @@ import { ExploreGptsView } from './components/Views/ExploreGptsView';
 import { SearchModal } from './components/SearchModal';
 import { SettingsModal } from './components/SettingsModal';
 import { AttachedItem } from './components/Composer';
+
+export interface SavedConversation {
+  id: string;
+  title: string;
+  createdAt: number;
+  messages: Message[];
+}
+
+function getChatGroup(timestamp: number): 'today' | 'yesterday' | 'previous7' {
+  const now = new Date();
+  const chatDate = new Date(timestamp);
+
+  if (now.toDateString() === chatDate.toDateString()) return 'today';
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (yesterday.toDateString() === chatDate.toDateString()) return 'yesterday';
+
+  return 'previous7';
+}
+
+// Strict Directives: Robust detection of Image Generation requests in Khmer and English
+export function detectImageIntent(text: string, mode?: string): { isImage: boolean; cleanPrompt: string } {
+  if (mode === 'image') return { isImage: true, cleanPrompt: text.trim() };
+
+  const trimmed = text.trim();
+  if (trimmed.startsWith('/image')) {
+    const clean = trimmed.replace(/^\/image\s*/i, '').trim();
+    return { isImage: true, cleanPrompt: clean || trimmed };
+  }
+
+  // Khmer image generation keywords
+  const khmerImageKeywords = [
+    'បង្កើតរូបភាព',
+    'បង្កើតរូប',
+    'គូររូបភាព',
+    'គូររូប',
+    'ចង់បានរូបភាព',
+    'ចង់បានរូប',
+    'សុំរូបភាព',
+    'សុំរូប',
+  ];
+
+  for (const kw of khmerImageKeywords) {
+    if (trimmed.includes(kw)) {
+      const regex = new RegExp(`(?:សូម|ជួយ|សុំ|ចង់|ខ្ញុំចង់|ខ្ញុំចង់បាន)?\\s*${kw}\\s*(?:នៃ|អំពី|ឱ្យ|អោយ|ពី|ជូន|មួយ)?\\s*[:៖\\-]?\\s*(.*)$`, 'i');
+      const match = trimmed.match(regex);
+      const clean = (match && match[1]?.trim()) ? match[1].trim() : trimmed;
+      return { isImage: true, cleanPrompt: clean || trimmed };
+    }
+  }
+
+  // English image generation keywords
+  const englishImageRegex = /^(?:please\s+|can\s+you\s+|could\s+you\s+|i\s+want\s+to\s+)?(?:generate|create|draw|paint|make|produce)\s+(?:an?\s+)?(?:image|picture|photo|illustration|artwork)\s*(?:of|about|showing|depicting)?\s*[:\-]?\s*(.*)$/i;
+  const engMatch = trimmed.match(englishImageRegex);
+  if (engMatch) {
+    const clean = engMatch[1]?.trim();
+    return { isImage: true, cleanPrompt: clean || trimmed };
+  }
+
+  if (/\b(generate image|create image|draw an image|draw a picture|paint a picture|make an image)\b/i.test(trimmed)) {
+    const clean = trimmed.replace(/^(?:please\s+|can\s+you\s+)?(?:generate|create|draw|paint|make)\s+(?:an?\s+)?(?:image|picture)\s*(?:of|about)?\s*[:\-]?\s*/i, '').trim();
+    return { isImage: true, cleanPrompt: clean || trimmed };
+  }
+
+  return { isImage: false, cleanPrompt: trimmed };
+}
+
+// Strict Directives: Robust detection of Video Generation requests in Khmer and English
+export function detectVideoIntent(text: string, mode?: string): { isVideo: boolean; cleanPrompt: string } {
+  if (mode === 'video') return { isVideo: true, cleanPrompt: text.trim() };
+
+  const trimmed = text.trim();
+  if (trimmed.startsWith('/video')) {
+    const clean = trimmed.replace(/^\/video\s*/i, '').trim();
+    return { isVideo: true, cleanPrompt: clean || trimmed };
+  }
+
+  // Khmer video generation keywords
+  const khmerVideoKeywords = [
+    'បង្កើតវីដេអូ',
+    'ធ្វើវីដេអូ',
+    'ផលិតវីដេអូ',
+    'ចង់បានវីដេអូ',
+    'សុំវីដេអូ',
+  ];
+
+  for (const kw of khmerVideoKeywords) {
+    if (trimmed.includes(kw)) {
+      const regex = new RegExp(`(?:សូម|ជួយ|សុំ|ចង់|ខ្ញុំចង់|ខ្ញុំចង់បាន)?\\s*${kw}\\s*(?:នៃ|អំពី|ឱ្យ|អោយ|ពី|ជូន|មួយ)?\\s*[:៖\\-]?\\s*(.*)$`, 'i');
+      const match = trimmed.match(regex);
+      const clean = (match && match[1]?.trim()) ? match[1].trim() : trimmed;
+      return { isVideo: true, cleanPrompt: clean || trimmed };
+    }
+  }
+
+  // English video generation keywords
+  const englishVideoRegex = /^(?:please\s+|can\s+you\s+|could\s+you\s+|i\s+want\s+to\s+)?(?:generate|create|make|produce|render)\s+(?:an?\s+)?(?:video|clip|animation)\s*(?:of|about|showing|depicting)?\s*[:\-]?\s*(.*)$/i;
+  const engMatch = trimmed.match(englishVideoRegex);
+  if (engMatch) {
+    const clean = engMatch[1]?.trim();
+    return { isVideo: true, cleanPrompt: clean || trimmed };
+  }
+
+  if (/\b(generate video|create video|make a video|render video)\b/i.test(trimmed)) {
+    const clean = trimmed.replace(/^(?:please\s+|can\s+you\s+)?(?:generate|create|make)\s+(?:an?\s+)?(?:video|clip)\s*(?:of|about)?\s*[:\-]?\s*/i, '').trim();
+    return { isVideo: true, cleanPrompt: clean || trimmed };
+  }
+
+  return { isVideo: false, cleanPrompt: trimmed };
+}
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -27,6 +138,40 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Dynamic conversations: empty initial state for new users, saved dynamically on chat
+  const [conversations, setConversations] = useState<SavedConversation[]>(() => {
+    try {
+      const stored = localStorage.getItem('omni_saved_conversations');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Persist conversations to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('omni_saved_conversations', JSON.stringify(conversations));
+    } catch (e) {
+      console.error('Failed to sync conversations to localStorage:', e);
+    }
+  }, [conversations]);
+
+  // Synchronize current messages to active conversation
+  useEffect(() => {
+    if (!currentChatId || isTemporaryChat || messages.length === 0) return;
+    setConversations((prev) =>
+      prev.map((c) => (c.id === currentChatId ? { ...c, messages } : c))
+    );
+  }, [messages, currentChatId, isTemporaryChat]);
+
+  // Convert conversations to ChatHistoryItems with dynamic groups
+  const chatHistoryItems: ChatHistoryItem[] = conversations.map((c) => ({
+    id: c.id,
+    title: c.title,
+    group: getChatGroup(c.createdAt),
+  }));
 
   // Responsive sidebar collapse for mobile
   useEffect(() => {
@@ -63,69 +208,25 @@ export default function App() {
   const handleSelectChat = (id: string) => {
     setCurrentChatId(id);
     setActiveView('chat');
-
-    // Prepopulate sample chat if selected from history
-    if (id === '1') {
-      setMessages([
-        {
-          id: 'm1',
-          sender: 'user',
-          content: 'តើធ្វើដូចម្តេចដើម្បីបង្កើត Custom Hook ក្នុង React 19 ជាមួយ TypeScript ឱ្យមាន Type Safety ល្អ?',
-          timestamp: '10:30 AM',
-        },
-        {
-          id: 'm2',
-          sender: 'system',
-          content: `ការបង្កើត Custom Hook ក្នុង **React 19** ជាមួយ **TypeScript** ទាមទារឱ្យមានការកំណត់ Generic types និង Return types ឱ្យបានច្បាស់លាស់។
-
-### ឧទាហរណ៍ជាក់ស្តែង: \`useFetch\` Hook
-
-\`\`\`typescript
-import { useState, useEffect } from 'react';
-
-interface FetchState<T> {
-  data: T | null;
-  isLoading: boolean;
-  error: Error | null;
-}
-
-export function useFetch<T>(url: string): FetchState<T> {
-  const [state, setState] = useState<FetchState<T>>({
-    data: null,
-    isLoading: true,
-    error: null,
-  });
-
-  useEffect(() => {
-    let isMounted = true;
-    setState(prev => ({ ...prev, isLoading: true }));
-
-    fetch(url)
-      .then(res => res.json())
-      .then(data => {
-        if (isMounted) setState({ data, isLoading: false, error: null });
-      })
-      .catch(error => {
-        if (isMounted) setState({ data: null, isLoading: false, error });
-      });
-
-    return () => { isMounted = false; };
-  }, [url]);
-
-  return state;
-}
-\`\`\`
-
-**ចំណុចគន្លឹះសំខាន់ៗ:**
-1. ប្រើប្រាស់ **Generics (\`<T>\`)** ដើម្បីឱ្យ Caller កំណត់ប្រភេទ Type ទិន្នន័យបានដោយសេរី។
-2. ត្រឡប់ **Explicit Return Type** ជួយឱ្យ IDE ផ្តល់ Autocomplete ត្រឹមត្រូវ។
-3. គ្រប់គ្រង Cleanup ជាមួយ \`isMounted\` ដើម្បីជៀសវាង Memory Leak។`,
-          timestamp: '10:30 AM',
-        },
-      ]);
+    const target = conversations.find((c) => c.id === id);
+    if (target) {
+      setMessages(target.messages);
     } else {
       setMessages([]);
     }
+  };
+
+  const handleDeleteChat = (id: string) => {
+    setConversations((prev) => prev.filter((c) => c.id !== id));
+    if (currentChatId === id) {
+      handleNewChat();
+    }
+  };
+
+  const handleRenameChat = (id: string, newTitle: string) => {
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c))
+    );
   };
 
   // Production-Ready Unified Message Handler (Text Chat + Image Generation + Video Generation)
@@ -148,22 +249,43 @@ export function useFetch<T>(url: string): FetchState<T> {
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
 
+    // Strict Directives: Detect image and video generation intents
+    const { isImage: isImageIntent, cleanPrompt: imagePrompt } = detectImageIntent(trimmedText, mode);
+    const { isVideo: isVideoIntent, cleanPrompt: videoPrompt } = !isImageIntent
+      ? detectVideoIntent(trimmedText, mode)
+      : { isVideo: false, cleanPrompt: trimmedText };
+
+    // Save and create conversation dynamically if starting a fresh chat
+    if (!isTemporaryChat) {
+      if (!currentChatId) {
+        const newChatId = `chat_${Date.now()}`;
+        setCurrentChatId(newChatId);
+
+        let title = trimmedText.slice(0, 35);
+        if (trimmedText.length > 35) title += '...';
+        if (isImageIntent) {
+          title = '🖼️ ' + (imagePrompt.slice(0, 28) || 'រូបភាព');
+        } else if (isVideoIntent) {
+          title = '🎬 ' + (videoPrompt.slice(0, 28) || 'វីដេអូ');
+        }
+
+        const newConv: SavedConversation = {
+          id: newChatId,
+          title: title || 'ការសន្ទនាថ្មី',
+          createdAt: Date.now(),
+          messages: updatedMessages,
+        };
+        setConversations((prev) => [newConv, ...prev]);
+      }
+    }
+
     const aiMessageId = Math.random().toString(36).substring(7);
 
     // -------------------------------------------------------------------------
-    // Route 1: Image Generation Intent (e.g. "គូររូប...", "/image", "បង្កើតរូបភាព...")
+    // Route 1: Image Generation Intent (Strict Directives: Produce Actual Image)
     // -------------------------------------------------------------------------
-    const isImageIntent =
-      mode === 'image' ||
-      trimmedText.startsWith('/image') ||
-      trimmedText.startsWith('គូររូប') ||
-      trimmedText.startsWith('បង្កើតរូបភាព') ||
-      /^(draw|generate image|create image|paint)\b/i.test(trimmedText);
-
     if (isImageIntent) {
-      const cleanPrompt = trimmedText
-        .replace(/^(\/image|គូររូប:?|បង្កើតរូបភាព:?|draw a|draw an|generate image of|create image of)\s*/i, '')
-        .trim() || trimmedText;
+      const cleanPrompt = imagePrompt || trimmedText;
 
       const systemPlaceholder: Message = {
         id: aiMessageId,
@@ -231,24 +353,15 @@ export function useFetch<T>(url: string): FetchState<T> {
     }
 
     // -------------------------------------------------------------------------
-    // Route 2: Video Generation Intent (e.g. "បង្កើតវីដេអូ...", "/video", "ធ្វើវីដេអូ...")
+    // Route 2: Video Generation Intent (Strict Directives: Produce Actual Video)
     // -------------------------------------------------------------------------
-    const isVideoIntent =
-      mode === 'video' ||
-      trimmedText.startsWith('/video') ||
-      trimmedText.startsWith('បង្កើតវីដេអូ') ||
-      trimmedText.startsWith('ធ្វើវីដេអូ') ||
-      /^(generate video|create video|make video)\b/i.test(trimmedText);
-
     if (isVideoIntent) {
-      const cleanPrompt = trimmedText
-        .replace(/^(\/video|បង្កើតវីដេអូ:?|ធ្វើវីដេអូ:?|generate video of|create video of)\s*/i, '')
-        .trim() || trimmedText;
+      const cleanPrompt = videoPrompt || trimmedText;
 
       const systemPlaceholder: Message = {
         id: aiMessageId,
         sender: 'system',
-        content: `ម៉ាស៊ីន AI Veo កំពុង Render វីដេអូតាមការពិពណ៌នារបស់អ្នក...`,
+        content: `ម៉ាស៊ីន Omni Video Studio កំពុង Render វីដេអូតាមការពិពណ៌នារបស់អ្នក...`,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
         generationType: 'video',
         generatedVideo: {
@@ -309,7 +422,7 @@ export function useFetch<T>(url: string): FetchState<T> {
             m.id === aiMessageId
               ? {
                   ...m,
-                  content: `នេះជាវីដេអូដែល Omni AI (Veo) បានបង្កើតជូនអ្នក៖ **"${cleanPrompt}"**`,
+                  content: `នេះជាវីដេអូដែល Omni AI បានបង្កើតជូនអ្នក៖ **"${cleanPrompt}"**`,
                   generatedVideo: {
                     url: videoDownloadUrl,
                     prompt: cleanPrompt,
@@ -324,14 +437,13 @@ export function useFetch<T>(url: string): FetchState<T> {
         console.warn('Video generation error/demo fallback in chat:', err);
         const errMsg = err?.message || '';
 
-        // If Veo quota hit, provide clear note & demonstration video player
         setMessages((prev) =>
           prev.map((m) =>
             m.id === aiMessageId
               ? {
                   ...m,
                   content: errMsg.includes('Quota') || errMsg.includes('429') || errMsg.includes('403')
-                    ? `⚠️ គណនី Gemini មិនទាន់មាន Quota សម្រាប់ម៉ូដែល Veo ឡើយ (ទាមទារ Google Cloud Paid Tier)។ នេះជាវីដេអូគំរូសម្រាប់ទស្សនា៖`
+                    ? `⚠️ សេវាកម្មបង្កើតវីដេអូមានបន្ទុកខ្ពស់ជាបណ្តោះអាសន្ន។ នេះជាវីដេអូគំរូសម្រាប់ទស្សនា៖`
                     : `មានបញ្ហាក្នុងការបង្កើតវីដេអូ៖ ${errMsg}`,
                   generatedVideo: {
                     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
@@ -450,7 +562,7 @@ export function useFetch<T>(url: string): FetchState<T> {
                   )
                 );
               } else if (event.type === 'error') {
-                const errMsg = event.message || 'កំហុសពី Google Gemini API';
+                const errMsg = event.message || 'កំហុសពីប្រព័ន្ធ Omni AI';
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === aiMessageId
@@ -469,6 +581,88 @@ export function useFetch<T>(url: string): FetchState<T> {
               console.warn('Could not parse SSE line:', line, err);
             }
           }
+        }
+      }
+
+      // API Response Handler: Check if response contains image generation action JSON or image URL
+      const jsonActionMatch = accumulatedText.match(/\{[\s\S]*?"action"\s*:\s*"(?:dalle\.text2im|dalle|generate_image|image)"[\s\S]*?\}/i);
+      if (jsonActionMatch) {
+        try {
+          const parsed = JSON.parse(jsonActionMatch[0]);
+          const promptToDraw = parsed.prompt || parsed.prompt_text || parsed.description;
+          const directUrl = parsed.url || parsed.imageUrl || parsed.image_url;
+
+          if (directUrl) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === aiMessageId
+                  ? {
+                      ...m,
+                      content: `នេះជារូបភាពដែល Omni AI បានបង្កើតជូនអ្នក៖`,
+                      generatedImage: {
+                        url: directUrl,
+                        prompt: promptToDraw || 'AI Generated Image',
+                        aspectRatio: '1:1',
+                      },
+                      isStreaming: false,
+                      generationType: 'image',
+                    }
+                  : m
+              )
+            );
+          } else if (promptToDraw) {
+            fetch('/api/generate-image', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: promptToDraw, aspectRatio: '1:1' }),
+            })
+              .then((r) => r.json())
+              .then((imgData) => {
+                if (imgData.imageUrl) {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === aiMessageId
+                        ? {
+                            ...m,
+                            content: `នេះជារូបភាពដែល Omni AI បានបង្កើតជូនអ្នកតាមការពិពណ៌នា៖ **"${promptToDraw}"**`,
+                            generatedImage: {
+                              url: imgData.imageUrl,
+                              prompt: promptToDraw,
+                              aspectRatio: imgData.aspectRatio || '1:1',
+                            },
+                            isStreaming: false,
+                            generationType: 'image',
+                          }
+                        : m
+                    )
+                  );
+                }
+              })
+              .catch(() => {});
+          }
+        } catch {}
+      } else {
+        const mdImgMatch = accumulatedText.match(/!\[(.*?)\]\((https?:\/\/[^\s\)]+)\)/i);
+        if (mdImgMatch) {
+          const alt = mdImgMatch[1] || 'AI Generated Image';
+          const url = mdImgMatch[2];
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === aiMessageId
+                ? {
+                    ...m,
+                    content: accumulatedText.replace(mdImgMatch[0], '').trim(),
+                    generatedImage: {
+                      url,
+                      prompt: alt,
+                      aspectRatio: '1:1',
+                    },
+                    isStreaming: false,
+                    generationType: 'image',
+                  }
+                : m
+            )
+          );
         }
       }
 
@@ -495,12 +689,72 @@ export function useFetch<T>(url: string): FetchState<T> {
 
         if (fallbackRes.ok) {
           const data = await fallbackRes.json();
+          const content = data.content || 'មិនមានចម្លើយត្រឡប់មកវិញ។';
+
+          // Check if JSON response contained dalle/image action
+          const jsonActionMatch = content.match(/\{[\s\S]*?"action"\s*:\s*"(?:dalle\.text2im|dalle|generate_image|image)"[\s\S]*?\}/i);
+          if (jsonActionMatch) {
+            try {
+              const parsed = JSON.parse(jsonActionMatch[0]);
+              const promptToDraw = parsed.prompt || parsed.prompt_text || parsed.description;
+              const directUrl = parsed.url || parsed.imageUrl || parsed.image_url;
+
+              if (directUrl) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === aiMessageId
+                      ? {
+                          ...m,
+                          content: `នេះជារូបភាពដែល Omni AI បានបង្កើតជូនអ្នក៖`,
+                          generatedImage: {
+                            url: directUrl,
+                            prompt: promptToDraw || 'AI Generated Image',
+                            aspectRatio: '1:1',
+                          },
+                          isStreaming: false,
+                          generationType: 'image',
+                        }
+                      : m
+                  )
+                );
+                return;
+              } else if (promptToDraw) {
+                const imgRes = await fetch('/api/generate-image', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ prompt: promptToDraw, aspectRatio: '1:1' }),
+                });
+                const imgData = await imgRes.json();
+                if (imgData.imageUrl) {
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === aiMessageId
+                        ? {
+                            ...m,
+                            content: `នេះជារូបភាពដែល Omni AI បានបង្កើតជូនអ្នកតាមការពិពណ៌នា៖ **"${promptToDraw}"**`,
+                            generatedImage: {
+                              url: imgData.imageUrl,
+                              prompt: promptToDraw,
+                              aspectRatio: imgData.aspectRatio || '1:1',
+                            },
+                            isStreaming: false,
+                            generationType: 'image',
+                          }
+                        : m
+                    )
+                  );
+                  return;
+                }
+              }
+            } catch {}
+          }
+
           setMessages((prev) =>
             prev.map((m) =>
               m.id === aiMessageId
                 ? {
                     ...m,
-                    content: data.content || 'មិនមានចម្លើយត្រឡប់មកវិញ។',
+                    content,
                     isStreaming: false,
                     error: false,
                   }
@@ -517,7 +771,7 @@ export function useFetch<T>(url: string): FetchState<T> {
       const displayMsg = isTimeout
         ? 'ការតភ្ជាប់លើសពេលវេលាកំណត់ (Timeout)។ សូមព្យាយាមម្តងទៀត។'
         : primaryError?.message ||
-          'មិនអាចភ្ជាប់ទៅកាន់ Google Gemini API បានទេ។ សូមពិនិត្យមើល API Key នៅក្នុង Settings > Secrets។';
+          'មិនអាចភ្ជាប់ទៅកាន់ប្រព័ន្ធ Omni AI បានទេ។ សូមព្យាយាមម្តងទៀត។';
 
       setMessages((prev) =>
         prev.map((m) =>
@@ -562,6 +816,9 @@ export function useFetch<T>(url: string): FetchState<T> {
         onOpenSearch={() => setIsSearchOpen(true)}
         currentChatId={currentChatId}
         onSelectChat={handleSelectChat}
+        chats={chatHistoryItems}
+        onDeleteChat={handleDeleteChat}
+        onRenameChat={handleRenameChat}
       />
 
       {/* 2. Main Content Canvas */}
@@ -588,7 +845,7 @@ export function useFetch<T>(url: string): FetchState<T> {
               onRegenerate={messages.length > 1 ? handleRegenerate : undefined}
               isLoading={isLoading}
               selectedModelName={
-                selectedModel === '3.8-flash' ? 'Gemini 3.8 Flash' : 'Gemini 3.5 Flash-Lite'
+                selectedModel === '3.8-flash' ? 'Omni 5.5' : 'Omni Flash'
               }
               onOpenVideoStudio={() => setActiveView('video')}
               onOpenImageStudio={() => setActiveView('images')}
@@ -627,6 +884,7 @@ export function useFetch<T>(url: string): FetchState<T> {
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         onSelectChat={handleSelectChat}
+        chats={chatHistoryItems}
       />
 
       {/* 4. Settings Modal */}

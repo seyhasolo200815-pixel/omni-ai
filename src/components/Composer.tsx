@@ -6,12 +6,9 @@ import {
   FileText,
   Image as ImageIcon,
   Camera,
-  HardDrive,
   X,
-  Globe,
   Sparkles,
-  Video,
-  Wand2
+  Video
 } from 'lucide-react';
 
 export interface AttachedItem {
@@ -20,7 +17,7 @@ export interface AttachedItem {
   type: 'file' | 'image';
   size?: string;
   mimeType?: string;
-  data?: string; // Base64 representation for Gemini
+  data?: string; // Base64 representation
 }
 
 interface ComposerProps {
@@ -41,7 +38,6 @@ export const Composer: React.FC<ComposerProps> = ({
   const [text, setText] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [attachments, setAttachments] = useState<AttachedItem[]>([]);
-  const [isWebSearchActive, setIsWebSearchActive] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [activeMode, setActiveMode] = useState<'chat' | 'image' | 'video'>('chat');
 
@@ -206,7 +202,7 @@ export const Composer: React.FC<ComposerProps> = ({
           {activeMode === 'video' && (
             <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-purple-50 text-purple-700 text-xs font-semibold border border-purple-200/80 shadow-2xs animate-in fade-in">
               <Video size={12} className="text-purple-600" />
-              <span>មុខងារបង្កើតវីដេអូ (AI Video Mode - Google Veo)</span>
+              <span>មុខងារបង្កើតវីដេអូ (Omni Video Mode)</span>
               <button
                 type="button"
                 onClick={() => {
@@ -259,15 +255,7 @@ export const Composer: React.FC<ComposerProps> = ({
             onChange={(e) => setText(e.target.value)}
             onKeyDown={handleKeyDown}
             disabled={disabled}
-            placeholder={
-              disabled
-                ? 'Omni AI កំពុងឆ្លើយតប...'
-                : activeMode === 'image'
-                ? 'ពិពណ៌នារូបភាពដែលអ្នកចង់ឱ្យ AI គូរ (ឧ. ប្រាសាទអង្គរវត្តនាពេលថ្ងៃរះ)...'
-                : activeMode === 'video'
-                ? 'ពិពណ៌នាឈុតឆាកវីដេអូដែលអ្នកចង់ឱ្យ AI បង្កើត (ឧ. រថយន្តហោះក្នុងទីក្រុងពេលរាត្រី)...'
-                : 'សួរ Omni AI អ្វីក៏បាន (ឬវាយ "គូររូប..." ឬ "បង្កើតវីដេអូ...")...'
-            }
+            placeholder="Ask Omni AI"
             className="w-full resize-none bg-transparent text-[15px] leading-relaxed text-zinc-900 placeholder:text-zinc-400 focus:outline-none max-h-48 disabled:opacity-60 font-medium"
           />
         </div>
@@ -318,7 +306,7 @@ export const Composer: React.FC<ComposerProps> = ({
                     <Video size={16} />
                   </div>
                   <div>
-                    <div className="font-semibold text-zinc-900">បង្កើតវីដេអូ AI (Veo)</div>
+                    <div className="font-semibold text-zinc-900">បង្កើតវីដេអូ AI (Omni Video)</div>
                     <div className="text-[11px] text-zinc-500">បម្លែងអត្ថបទទៅជាវីដេអូ</div>
                   </div>
                 </button>
@@ -375,50 +363,6 @@ export const Composer: React.FC<ComposerProps> = ({
                 </button>
               </div>
             )}
-
-            {/* Quick Action Chips */}
-            <button
-              type="button"
-              onClick={selectImageMode}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
-                activeMode === 'image'
-                  ? 'bg-blue-600 text-white shadow-2xs'
-                  : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/70'
-              }`}
-              title="បង្កើតរូបភាព AI"
-            >
-              <Sparkles size={13} className={activeMode === 'image' ? 'text-white' : 'text-blue-600'} />
-              <span className="hidden sm:inline">រូបភាព</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={selectVideoMode}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold transition-colors ${
-                activeMode === 'video'
-                  ? 'bg-purple-600 text-white shadow-2xs'
-                  : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/70'
-              }`}
-              title="បង្កើតវីដេអូ AI"
-            >
-              <Video size={13} className={activeMode === 'video' ? 'text-white' : 'text-purple-600'} />
-              <span className="hidden sm:inline">វីដេអូ</span>
-            </button>
-
-            {/* Search the web toggle pill */}
-            <button
-              type="button"
-              onClick={() => setIsWebSearchActive(!isWebSearchActive)}
-              className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs transition-colors ${
-                isWebSearchActive
-                  ? 'bg-blue-100 text-blue-700 font-medium'
-                  : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/70'
-              }`}
-              title="ស្វែងរកតាមគេហទំព័រ"
-            >
-              <Globe size={14} />
-              <span>ស្វែងរក</span>
-            </button>
           </div>
 
           {/* Right Actions: Voice Mic + Circular Send Button */}
@@ -454,11 +398,6 @@ export const Composer: React.FC<ComposerProps> = ({
             </button>
           </div>
         </div>
-      </div>
-
-      {/* Footer Disclaimer */}
-      <div className="py-2 text-center text-[11px] text-zinc-400 tracking-tight select-none">
-        Omni AI អាចមានកំហុស។ សូមផ្ទៀងផ្ទាត់ព័ត៌មានសំខាន់ៗ។
       </div>
     </div>
   );

@@ -67,7 +67,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
   onSendMessage,
   onRegenerate,
   isLoading = false,
-  selectedModelName = 'Gemini 3.8 Flash',
+  selectedModelName = 'Omni 5.5',
   onOpenVideoStudio,
   onOpenImageStudio,
 }) => {
@@ -113,38 +113,10 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
 
   const isEmpty = messages.length === 0;
 
-  // Rich suggestion cards showcasing Reasoning, Image, and Video Generation
-  const suggestions = [
-    {
-      type: 'image',
-      icon: <Sparkles size={16} className="text-blue-600" />,
-      title: 'គូររូបភាព AI (Image Generation)',
-      prompt: 'គូររូប: ប្រាសាទអង្គរវត្តនាពេលថ្ងៃរះពណ៌មាស រំលេចពន្លឺចាំងលើផ្ទៃទឹកត្រពាំង',
-    },
-    {
-      type: 'video',
-      icon: <Video size={16} className="text-purple-600" />,
-      title: 'បង្កើតវីដេអូ AI (Veo Video Generation)',
-      prompt: 'បង្កើតវីដេអូ: រថយន្តទំនើបបើកបរលើផ្លូវភ្លើងពណ៌ Neon ពេលរាត្រីក្នុងរចនាប័ទ្មភាពយន្ត 16:9',
-    },
-    {
-      type: 'chat',
-      icon: <Brain size={16} className="text-indigo-600" />,
-      title: 'វិភាគកូដ React 19 & TypeScript',
-      prompt: 'សូមពន្យល់ពីគន្លឹះ Optimize Performance ក្នុង React 19 និង TypeScript ជាមួយនឹងកូដគំរូ',
-    },
-    {
-      type: 'chat',
-      icon: <Sparkles size={16} className="text-amber-600" />,
-      title: 'សរសេរអត្ថបទទីផ្សារ (Copywriting)',
-      prompt: 'សូមជួយសរសេរ Copywriting ទាក់ទាញសម្រាប់យុទ្ធនាការបើកលក់ផលិតផលបច្ចេកវិទ្យាថ្មីជាភាសាខ្មែរ',
-    },
-  ];
-
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-white relative">
       {isEmpty ? (
-        /* Empty Welcome Screen: Spacious, centered, minimalist with quick prompts */
+        /* Empty Welcome Screen: Spacious, centered, minimalist */
         <div className="flex-1 flex flex-col items-center justify-center px-4 w-full max-w-4xl mx-auto -mt-6">
           {/* Centered Omni Logo & Welcome Heading */}
           <div className="text-center mb-6 select-none">
@@ -154,9 +126,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             <h1 className="text-[28px] md:text-[34px] font-bold text-black tracking-tight leading-snug">
               តើថ្ងៃនេះខ្ញុំអាចជួយអ្វីអ្នកបានខ្លះ?
             </h1>
-            <p className="text-xs text-zinc-600 mt-1.5 font-medium">
-              ដំណើរការដោយខួរក្បាលឆ្លាតវៃពិតប្រាកដរបស់ Google Gemini & Veo (អត្ថបទ · រូបភាព · វីដេអូ)
-            </p>
           </div>
 
           {/* Centered Composer */}
@@ -168,29 +137,6 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
               onOpenVideoStudio={onOpenVideoStudio}
               onOpenImageStudio={onOpenImageStudio}
             />
-          </div>
-
-          {/* Clean Suggestion Cards */}
-          <div className="w-full max-w-[768px] grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-5 px-4">
-            {suggestions.map((sug, idx) => (
-              <button
-                key={idx}
-                onClick={() => onSendMessage(sug.prompt, [])}
-                className="p-3 text-left border border-zinc-200/90 rounded-2xl hover:border-zinc-400 hover:bg-[#f8f8fa] transition-all group shadow-2xs bg-white flex items-start gap-2.5"
-              >
-                <div className="p-1.5 rounded-lg bg-zinc-100 group-hover:bg-white transition-colors shrink-0 mt-0.5">
-                  {sug.icon}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] font-bold text-zinc-900 group-hover:text-black truncate">
-                    {sug.title}
-                  </div>
-                  <div className="text-[12px] text-zinc-600 font-normal line-clamp-1 mt-0.5">
-                    {sug.prompt}
-                  </div>
-                </div>
-              </button>
-            ))}
           </div>
         </div>
       ) : (
@@ -288,7 +234,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
             <div className="flex items-center justify-between p-4 border-b border-zinc-800 text-white">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-blue-400" />
-                <span className="text-xs font-semibold">រូបភាពបង្កើតដោយ Google Gemini</span>
+                <span className="text-xs font-semibold">រូបភាពបង្កើតដោយ Omni AI</span>
                 {activeModalImage.aspectRatio && (
                   <span className="px-2 py-0.5 rounded text-[11px] bg-zinc-800 text-zinc-300 font-mono">
                     {activeModalImage.aspectRatio}
@@ -411,7 +357,7 @@ const AssistantMessageItem: React.FC<AssistantMessageItemProps> = ({
                 {isImageGen
                   ? 'Omni AI កំពុងគូររូបភាព...'
                   : isVideoGen
-                  ? 'Omni AI កំពុងបង្កើតវីដេអូជាមួយ Veo...'
+                  ? 'Omni AI កំពុងបង្កើតវីដេអូ...'
                   : 'Omni AI កំពុងគិត'}
               </span>
               <span className="inline-flex items-center gap-1 ml-0.5">
@@ -468,7 +414,7 @@ const AssistantMessageItem: React.FC<AssistantMessageItemProps> = ({
               <div className="flex items-center gap-2 truncate pr-2">
                 <span className="inline-flex items-center gap-1 font-semibold text-blue-600">
                   <Sparkles size={12} />
-                  <span>Gemini Image</span>
+                  <span>Omni Image</span>
                 </span>
                 <span className="text-zinc-600 truncate">{msg.generatedImage.prompt}</span>
               </div>
@@ -580,7 +526,7 @@ const VideoMessageCard: React.FC<{ videoData: GeneratedVideoData }> = ({ videoDa
           </div>
           <div>
             <div className="text-sm font-bold text-zinc-900">
-              ម៉ាស៊ីន AI Veo កំពុង Render វីដេអូ...
+              ម៉ាស៊ីន Omni Video Studio កំពុង Render វីដេអូ...
             </div>
             <div className="text-xs text-zinc-600">
               ដំណើរការ Text-to-Video គុណភាពខ្ពស់ 1080p
@@ -633,7 +579,7 @@ const VideoMessageCard: React.FC<{ videoData: GeneratedVideoData }> = ({ videoDa
         <div className="flex items-center gap-2 truncate pr-2">
           <span className="inline-flex items-center gap-1 font-semibold text-purple-400">
             <Video size={13} />
-            <span>Veo Video</span>
+            <span>Omni Video</span>
           </span>
           <span className="text-zinc-400 truncate">{videoData.prompt}</span>
         </div>

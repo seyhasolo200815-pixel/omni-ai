@@ -141,7 +141,7 @@ export const VideoPlaceholder: React.FC<VideoPlaceholderProps> = ({ onBackToChat
       const data = await res.json();
 
       if (!res.ok || data.error) {
-        throw new Error(data.message || 'ម៉ាស៊ីន Veo មិនអាចចាប់ផ្តើមបង្កើតវីដេអូបានទេ។');
+        throw new Error(data.message || 'ម៉ាស៊ីន Omni Video មិនអាចចាប់ផ្តើមបង្កើតវីដេអូបានទេ។');
       }
 
       const operationName = data.operationName;
@@ -192,9 +192,9 @@ export const VideoPlaceholder: React.FC<VideoPlaceholderProps> = ({ onBackToChat
       // Fallback: If user hits Veo Quota or needs paid tier, explain clearly and provide sample video demonstration
       const rawErrMsg = err?.message || '';
       if (rawErrMsg.includes('429') || rawErrMsg.includes('quota') || rawErrMsg.includes('403') || rawErrMsg.includes('Billing') || rawErrMsg.includes('RESOURCE_EXHAUSTED')) {
-        setError('គណនី Gemini មិនទាន់មាន Quota សម្រាប់ម៉ូដែល Veo ឡើយ (Veo ទាមទារ Google Cloud Paid Tier)។ ប្រព័ន្ធបានបង្កើតវីដេអូសាកល្បងជាគំរូខាងក្រោមជូនអ្នកដើម្បីទស្សនាចំណុចប្រទាក់។');
+        setError('សេវាកម្មបង្កើតវីដេអូមានបន្ទុកខ្ពស់ ឬកូតាត្រូវបានប្រើប្រាស់អស់ជាបណ្តោះអាសន្ន។ ប្រព័ន្ធបានបង្កើតវីដេអូសាកល្បងជាគំរូខាងក្រោមជូនអ្នកដើម្បីទស្សនាចំណុចប្រទាក់។');
       } else {
-        setError(rawErrMsg || 'មានបញ្ហាក្នុងការទាក់ទងទៅ Veo API។');
+        setError(rawErrMsg || 'មានបញ្ហាក្នុងការបង្កើតវីដេអូ។');
       }
 
       // Add a simulated preview demo so user can test full player & download UX
@@ -280,7 +280,7 @@ export const VideoPlaceholder: React.FC<VideoPlaceholderProps> = ({ onBackToChat
                   ស្ទូឌីយោវីដេអូ AI (Omni Video Studio)
                 </h1>
                 <p className="text-xs text-zinc-600 font-medium mt-0.5">
-                  បង្កើតឈុតឆាកវីដេអូកម្រិតភាពយន្ត 1080p ដំណើរការដោយ Google Veo
+                  បង្កើតឈុតឆាកវីដេអូកម្រិតភាពយន្ត 1080p ដំណើរការដោយបច្ចេកវិទ្យា Omni Video Studio
                 </p>
               </div>
             </div>

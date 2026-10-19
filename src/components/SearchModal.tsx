@@ -6,26 +6,17 @@ interface SearchModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSelectChat: (id: string) => void;
+  chats?: ChatHistoryItem[];
 }
 
 export const SearchModal: React.FC<SearchModalProps> = ({
   isOpen,
   onClose,
   onSelectChat,
+  chats = [],
 }) => {
   const [query, setQuery] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
-
-  const sampleChats: ChatHistoryItem[] = [
-    { id: '1', title: 'ការសរសេរកូដ React និង TypeScript', group: 'today' },
-    { id: '2', title: 'គន្លឹះរៀបចំផែនការអាជីវកម្មឌីជីថល', group: 'today' },
-    { id: '3', title: 'បកប្រែឯកសារបច្ចេកវិទ្យា AI ជាភាសាខ្មែរ', group: 'today' },
-    { id: '4', title: 'គំនិតបង្កើតវីដេអូខ្លីលើ TikTok និង Reels', group: 'yesterday' },
-    { id: '5', title: 'កែសម្រួលរូបភាពផលិតផលឱ្យមានភាពទាក់ទាញ', group: 'yesterday' },
-    { id: '6', title: 'រូបមន្តម្ហូបប្រពៃណីខ្មែរ និងប្រភពដើម', group: 'previous7' },
-    { id: '7', title: 'រៀបរាប់ពីប្រវត្តិសាស្រ្ត និងស្ថាបត្យកម្មអង្គរវត្ត', group: 'previous7' },
-    { id: '8', title: 'សំណួរនិងចម្លើយត្រៀមសម្ភាសន៍ការងារ Tech', group: 'previous7' },
-  ];
 
   useEffect(() => {
     if (isOpen) {
@@ -39,7 +30,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({
 
   if (!isOpen) return null;
 
-  const filtered = sampleChats.filter((c) =>
+  const filtered = chats.filter((c) =>
     c.title.toLowerCase().includes(query.toLowerCase())
   );
 
@@ -105,7 +96,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({
             </div>
           ) : (
             <div className="py-8 text-center text-zinc-400 text-xs">
-              រកមិនឃើញការសន្ទនាដែលត្រូវគ្នានឹង &ldquo;{query}&rdquo;
+              {chats.length === 0
+                ? 'មិនទាន់មានប្រវត្តិជជែកសម្រាប់ការស្វែងរកទេ'
+                : `រកមិនឃើញការសន្ទនាដែលត្រូវគ្នានឹង "${query}"`}
             </div>
           )}
         </div>

@@ -180,7 +180,7 @@ export const ImagesView: React.FC<ImagesViewProps> = ({ onBackToChat }) => {
                   ស្ទូឌីយោរូបភាព AI (Omni Image Studio)
                 </h1>
                 <p className="text-xs text-zinc-600 font-medium mt-0.5">
-                  បង្កើតរូបភាពសិល្បៈកម្រិតច្បាស់ខ្ពស់ដោយផ្ទាល់ពី Google Gemini
+                  បង្កើតរូបភាពសិល្បៈកម្រិតច្បាស់ខ្ពស់ដោយផ្ទាល់ពីបច្ចេកវិទ្យា Omni Image Studio
                 </p>
               </div>
             </div>
@@ -406,7 +406,7 @@ export const ImagesView: React.FC<ImagesViewProps> = ({ onBackToChat }) => {
             <div className="flex items-center justify-between p-4 border-b border-zinc-800 text-white">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-blue-400" />
-                <span className="text-xs font-semibold">រូបភាព Gemini AI</span>
+                <span className="text-xs font-semibold">រូបភាព Omni AI</span>
                 <span className="px-2 py-0.5 rounded text-[11px] bg-zinc-800 text-zinc-300 font-mono">
                   {activeModalImage.aspectRatio}
                 </span>

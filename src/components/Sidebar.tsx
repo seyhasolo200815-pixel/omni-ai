@@ -6,7 +6,6 @@ import {
   Bookmark,
   FolderKanban,
   Video,
-  Compass,
   PanelLeftClose,
   MoreHorizontal,
   Trash2,
@@ -47,6 +46,9 @@ interface SidebarProps {
   onOpenSearch: () => void;
   currentChatId: string | null;
   onSelectChat: (id: string) => void;
+  chats?: ChatHistoryItem[];
+  onDeleteChat?: (id: string) => void;
+  onRenameChat?: (id: string, newTitle: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -59,6 +61,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenSearch,
   currentChatId,
   onSelectChat,
+  chats = [],
+  onDeleteChat,
+  onRenameChat,
 }) => {
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
@@ -66,17 +71,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [editTitle, setEditTitle] = useState('');
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
-  // Sample Khmer conversation history
-  const [history, setHistory] = useState<ChatHistoryItem[]>([
-    { id: '1', title: 'ការសរសេរកូដ React និង TypeScript', group: 'today' },
-    { id: '2', title: 'គន្លឹះរៀបចំផែនការអាជីវកម្មឌីជីថល', group: 'today' },
-    { id: '3', title: 'បកប្រែឯកសារបច្ចេកវិទ្យា AI ជាភាសាខ្មែរ', group: 'today' },
-    { id: '4', title: 'គំនិតបង្កើតវីដេអូខ្លីលើ TikTok និង Reels', group: 'yesterday' },
-    { id: '5', title: 'កែសម្រួលរូបភាពផលិតផលឱ្យមានភាពទាក់ទាញ', group: 'yesterday' },
-    { id: '6', title: 'រូបមន្តម្ហូបប្រពៃណីខ្មែរ និងប្រភពដើម', group: 'previous7' },
-    { id: '7', title: 'រៀបរាប់ពីប្រវត្តិសាស្រ្ត និងស្ថាបត្យកម្មអង្គរវត្ត', group: 'previous7' },
-    { id: '8', title: 'សំណួរនិងចម្លើយត្រៀមសម្ភាសន៍ការងារ Tech', group: 'previous7' },
-  ]);
+  // Dynamic history from props (defaults to clean empty state)
+  const history = chats;
 
   // Close profile dropdown on outside click
   useEffect(() => {
@@ -94,10 +90,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleDeleteChat = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setHistory((prev) => prev.filter((item) => item.id !== id));
     setActiveMenuId(null);
-    if (currentChatId === id) {
-      onNewChat();
+    if (onDeleteChat) {
+      onDeleteChat(id);
     }
   };
 
@@ -110,9 +105,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleSaveRename = (id: string) => {
     if (editTitle.trim()) {
-      setHistory((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, title: editTitle.trim() } : item))
-      );
+      if (onRenameChat) {
+        onRenameChat(id, editTitle.trim());
+      }
     }
     setEditingChatId(null);
   };
@@ -266,20 +261,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-[10px] text-zinc-400 font-medium">ថ្មី</span>
           </button>
 
-          {/* 7. ស្វែងរក GPT */}
-          <button
-            onClick={() => onSelectView('explore_gpts')}
-            className={`w-full flex items-center justify-between h-9 px-2.5 rounded-lg text-[13.5px] font-normal transition-colors text-left ${
-              activeView === 'explore_gpts'
-                ? 'bg-[#ececec] text-zinc-900 font-medium'
-                : 'text-zinc-700 hover:text-zinc-950 hover:bg-[#ececec]'
-            }`}
-          >
-            <div className="flex items-center gap-2.5 min-w-0">
-              <Compass size={18} strokeWidth={1.8} className="shrink-0 text-zinc-600" />
-              <span className="truncate">ស្វែងរក GPT</span>
-            </div>
-          </button>
         </div>
 
         {/* Divider */}
@@ -287,6 +268,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Conversation History Area */}
         <div className="flex-1 overflow-y-auto px-2 py-2 space-y-4 text-xs font-normal">
+          {history.length === 0 && (
+            <div className="px-3 py-8 text-center select-none">
+              <div className="w-8 h-8 rounded-full bg-zinc-200/60 flex items-center justify-center mx-auto mb-2 text-zinc-400">
+                <SquarePen size={14} />
+              </div>
+              <p className="text-[12px] text-zinc-500 font-medium">គ្មានប្រវត្តិជជែកនៅឡើយទេ</p>
+              <p className="text-[11px] text-zinc-400 mt-0.5">ការសន្ទនាថ្មីនឹងត្រូវរក្សាទុកនៅទីនេះដោយស្វ័យប្រវត្តិ</p>
+            </div>
+          )}
           {/* Group: ថ្ងៃនេះ (Today) */}
           {todayItems.length > 0 && (
             <div>

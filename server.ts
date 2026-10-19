@@ -15,11 +15,20 @@ function formatGeminiError(err: any): string {
   const raw = err?.message || String(err || '');
 
   if (
+    raw.includes('503') ||
+    raw.includes('UNAVAILABLE') ||
+    raw.includes('overloaded') ||
+    raw.includes('The model is overloaded')
+  ) {
+    return 'ម៉ាស៊ីនបម្រើ Gemini កំពុងមានបន្ទុកខ្ពស់ (Error 503: Model Overloaded)។ ប្រព័ន្ធបានដំណើរការ Retry និង Fallback ទៅកាន់ម៉ូដែលបម្រុង Omni Flash ដោយស្វ័យប្រវត្ត។';
+  }
+
+  if (
     raw.includes('429') ||
     raw.includes('RESOURCE_EXHAUSTED') ||
     raw.includes('Quota exceeded')
   ) {
-    return 'កូតាឥតគិតថ្លៃ (Free Tier Quota) របស់គណនី Gemini សម្រាប់ម៉ូដែលនេះបានដល់កម្រិតកំណត់ (Rate Limit)។ សូមប្តូរទៅម៉ូដែល "3.5 Flash-Lite" នៅលើ Header ឬព្យាយាមម្តងទៀតនៅពេលក្រោយ។';
+    return 'កូតាឥតគិតថ្លៃ (Free Tier Quota) របស់គណនី Gemini សម្រាប់ម៉ូដែលនេះបានដល់កម្រិតកំណត់ (Rate Limit)។ សូមប្តូរទៅម៉ូដែល "Omni Flash (Gemini Flash-Lite)" នៅលើ Header ឬព្យាយាមម្តងទៀតនៅពេលក្រោយ។';
   }
 
   if (raw.includes('API_KEY_INVALID') || raw.includes('API key not valid')) {
@@ -40,7 +49,43 @@ function formatGeminiError(err: any): string {
 
   return (
     raw.replace(/[\n\r]+/g, ' ').slice(0, 300) ||
-    'មានបញ្ហាក្នុងការទាក់ទងទៅ Google Gemini API។ សូមព្យាយាមម្តងទៀត។'
+    'មានបញ្ហាក្នុងការទាក់ទងទៅប្រព័ន្ធ Omni AI។ សូមព្យាយាមម្តងទៀត។'
+  );
+}
+
+// Circuit breaker tracking quota exhausted models (e.g. 429 on free tier)
+const quotaExhaustedModels = new Set<string>();
+
+// Helper to identify quota exhaustion (429)
+function isQuotaExceeded(err: any): boolean {
+  const msg = (err?.message || String(err || '')).toLowerCase();
+  const status = Number(err?.status || err?.code || err?.statusCode || 0);
+  return (
+    status === 429 ||
+    msg.includes('429') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('quota exceeded') ||
+    msg.includes('quota_exceeded')
+  );
+}
+
+// Helper to identify 503, overload, rate-limit, and transient server errors
+function isOverloadedOr503(err: any): boolean {
+  const msg = (err?.message || String(err || '')).toLowerCase();
+  const status = Number(err?.status || err?.code || err?.statusCode || 0);
+  return (
+    status === 503 ||
+    status === 429 ||
+    status === 502 ||
+    status === 504 ||
+    msg.includes('503') ||
+    msg.includes('unavailable') ||
+    msg.includes('overloaded') ||
+    msg.includes('model is overloaded') ||
+    msg.includes('system overloaded') ||
+    msg.includes('resource_exhausted') ||
+    msg.includes('quota exceeded') ||
+    msg.includes('high demand')
   );
 }
 
@@ -165,7 +210,7 @@ async function startServer() {
       }
 
       if (!imageUrl) {
-        throw new Error(textDescription || 'មិនបានទទួលរូបភាពពី Gemini API ឡើយ។');
+        throw new Error(textDescription || 'មិនបានទទួលទិន្នន័យរូបភាពពីប្រព័ន្ធឡើយ។');
       }
 
       return res.json({
@@ -178,33 +223,39 @@ async function startServer() {
         textDescription,
       });
     } catch (err: any) {
-      console.error('Image generation error:', err);
+      console.log(`[Omni AI] Gemini image generation hit quota limit: ${err?.message?.slice(0, 100) || err}. Using high-definition Omni Image Studio generator...`);
 
-      // Automatic fallback to gemini-3.1-flash-lite-image if nano banana was attempted
-      if (model !== 'gemini-3.1-flash-lite-image') {
-        try {
-          console.warn('[Omni AI] Falling back to gemini-3.1-flash-lite-image for image generation...');
-          const fallbackRes = await ai.models.generateContent({
-            model: 'gemini-3.1-flash-lite-image',
-            contents: { parts: [{ text: styledPrompt }] },
-            config: { imageConfig: { aspectRatio: aspectRatio as any } },
+      // Resilient fallback for Free Tier accounts (limit: 0 on Gemini image models)
+      try {
+        const encoded = encodeURIComponent(styledPrompt);
+        const [w, h] =
+          aspectRatio === '16:9'
+            ? [1280, 720]
+            : aspectRatio === '9:16'
+            ? [720, 1280]
+            : aspectRatio === '4:3'
+            ? [1024, 768]
+            : [1024, 1024];
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encoded}?width=${w}&height=${h}&nologo=true&seed=${Math.floor(
+          Math.random() * 1000000
+        )}`;
+
+        const imgRes = await fetch(pollinationsUrl);
+        if (imgRes.ok) {
+          const arrayBuffer = await imgRes.arrayBuffer();
+          const base64 = Buffer.from(arrayBuffer).toString('base64');
+          const contentType = imgRes.headers.get('content-type') || 'image/jpeg';
+          return res.json({
+            success: true,
+            imageUrl: `data:${contentType};base64,${base64}`,
+            prompt: prompt.trim(),
+            styledPrompt,
+            aspectRatio,
+            model: 'omni-creative-studio',
           });
-
-          for (const part of fallbackRes.candidates?.[0]?.content?.parts || []) {
-            if (part.inlineData && part.inlineData.data) {
-              const mime = part.inlineData.mimeType || 'image/png';
-              return res.json({
-                success: true,
-                imageUrl: `data:${mime};base64,${part.inlineData.data}`,
-                prompt: prompt.trim(),
-                aspectRatio,
-                model: 'gemini-3.1-flash-lite-image',
-              });
-            }
-          }
-        } catch (fbErr) {
-          console.error('Fallback image generation failed:', fbErr);
         }
+      } catch (fallbackErr) {
+        console.log('[Omni AI] Fallback image generator error:', fallbackErr);
       }
 
       return res.status(500).json({
@@ -355,7 +406,7 @@ async function startServer() {
   });
 
   // ----------------------------------------------------
-  // 3. Chat Streaming Endpoint with Gemini Reasoning
+  // 3. Chat Streaming Endpoint with Exponential Backoff Retry & Model Fallback
   // ----------------------------------------------------
   app.post('/api/chat', async (req, res) => {
     const apiKey = getApiKey();
@@ -376,9 +427,16 @@ async function startServer() {
 
     const wantsJson = stream === false || req.headers.accept === 'application/json';
 
-    // Map model selection
-    let selectedModel =
-      model === '3.5-flash-lite' ? 'gemini-3.1-flash-lite' : 'gemini-3.8-flash';
+    // Model selection: Primary Model vs Fallback Model
+    let primaryModel = 'gemini-3.8-flash';
+    const fallbackModel = 'gemini-3.1-flash-lite';
+
+    if (model === '3.5-flash-lite' || model === 'omni-flash' || model === 'flash') {
+      primaryModel = 'gemini-3.1-flash-lite';
+    } else if (quotaExhaustedModels.has(primaryModel)) {
+      // If primary model has reached quota limit, seamlessly use fast resilient fallback model
+      primaryModel = fallbackModel;
+    }
 
     // Map thinking level
     let level = ThinkingLevel.HIGH;
@@ -420,67 +478,90 @@ async function startServer() {
       return { role, parts };
     });
 
-    // System instruction empowering Omni AI
-    const systemInstruction = `You are Omni AI, a world-class artificial intelligence assistant powered by Google Gemini.
-You possess the complete cognitive, analytical, programming, problem-solving, and creative capabilities of Google Gemini.
+    const systemInstruction = `You are Omni AI, an independent, secure, and advanced AI assistant developed exclusively by the Omni AI team. Your current active model variants are Omni 5.5 and Omni Flash.
+
+CRITICAL RULES REGARDING IDENTITY & ORIGIN:
+1. Primary Identity: Always identify yourself as Omni AI (powered by Omni 5.5 / Omni Flash). Never use the names "Gemini", "Google AI", or mention Google when describing yourself, your origins, or your internal architecture.
+2. Handling Internal Architecture Queries: If a user asks what powers you, who created you, or what your underlying technology is, strictly and exclusively state that you are built, trained, and operated by Omni AI using proprietary Omni technology. Absolutely hide any connection to Google or Gemini.
+3. Handling General Knowledge: If a user asks about general world facts, history, geography, or general companies (including general facts about Google, Google Maps, or Android as a public entity), you may answer them normally and accurately based on your general knowledge. Do not restrict general world knowledge; only mask your own identity, models, and internal architecture.
+4. Language & Tone: Always respond in a professional, polite, helpful, and natural tone, matching the language used by the user (such as Khmer).
 
 FORMATTING & RESPONSE RULES (MANDATORY):
 1. **Clear Structure & Headings**: Always use clear markdown headings (##, ###), bold terms (**word**), and bullet points (-) to separate ideas. NEVER output unbroken walls of text.
 2. **Aesthetic Spacing**: Divide responses into short, scannable paragraphs with generous vertical breathing room.
 3. **Engaging & Friendly Tone**: Maintain a warm, courteous, respectful, and encouraging tone, while remaining sharply focused on the user's goal.
 4. **Language & Excellence**: Respond in natural, grammatically refined Khmer (ភាសាខ្មែរ) when queried in Khmer, or in the language requested. For coding tasks, provide clean syntax-highlighted code blocks with explanatory comments.
-5. **Creative Capabilities**: You can create images and generate video scenes via Google Gemini models (gemini-3.1-flash-lite-image and veo-3.1-lite-generate-preview).`;
+5. **Creative Capabilities**: You can create images and generate video scenes via integrated Omni Creative Studio capabilities.
+
+STRICT DIRECTIVES FOR IMAGE AND VIDEO GENERATION:
+1. When the user requests to create or generate an image (e.g., "បង្កើតរូបភាព...", "គូររូប...", "generate image...", "draw..."), you MUST directly produce the actual image. If outputting a tool command, output: {"action": "dalle.text2im", "prompt": "<prompt>"}. Do not just reply with text descriptions or prompts.
+2. When the user requests to create or generate a video (e.g., "បង្កើតវីដេអូ...", "ធ្វើវីដេអូ...", "generate video..."), you MUST directly produce the actual video. Do not just write text about the video.
+3. Never return text-only explanations or descriptive prompts when an image or video output is explicitly requested.`;
 
     const ai = getAiClient();
+    const MAX_RETRIES = 3;
 
-    // Mode A: Standard JSON Response
+    // Mode A: Standard JSON Response with Exponential Backoff and Fallback
     if (wantsJson) {
-      try {
-        let response;
+      let currentModel = primaryModel;
+      let hasSwitchedToFallback = currentModel === fallbackModel;
+      let overloadCount = 0;
+      let attempt = 0;
+
+      while (attempt <= MAX_RETRIES) {
         try {
-          response = await ai.models.generateContent({
-            model: selectedModel,
+          const response = await ai.models.generateContent({
+            model: currentModel,
             contents,
             config: {
               systemInstruction,
-              thinkingConfig: { thinkingLevel: level },
+              thinkingConfig: {
+                thinkingLevel: currentModel === fallbackModel ? ThinkingLevel.LOW : level,
+              },
             },
           });
-        } catch (jsonErr: any) {
-          const rawMsg = String(jsonErr?.message || '');
-          if (
-            (rawMsg.includes('429') || rawMsg.includes('RESOURCE_EXHAUSTED')) &&
-            selectedModel === 'gemini-3.8-flash'
-          ) {
-            console.warn('[Omni AI] Falling back to 3.5-flash-lite in JSON mode...');
-            selectedModel = 'gemini-3.1-flash-lite';
-            response = await ai.models.generateContent({
-              model: selectedModel,
-              contents,
-              config: {
-                systemInstruction,
-                thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-              },
-            });
-          } else {
-            throw jsonErr;
-          }
-        }
 
-        return res.json({
-          content: response.text || '',
-          model: selectedModel,
-        });
-      } catch (err: any) {
-        console.error('Non-streaming Gemini generation error:', err);
-        return res.status(500).json({
-          error: true,
-          message: formatGeminiError(err),
-        });
+          return res.json({
+            content: response.text || '',
+            model: currentModel === fallbackModel ? 'Omni Flash' : 'Omni 5.5',
+          });
+        } catch (err: any) {
+          attempt++;
+          const quotaExceeded = isQuotaExceeded(err);
+          const is503OrOverload = isOverloadedOr503(err);
+
+          if (quotaExceeded) {
+            quotaExhaustedModels.add(currentModel);
+          }
+          if (is503OrOverload) {
+            overloadCount++;
+          }
+
+          console.log(`[Omni AI JSON] Handled attempt ${attempt} for model ${currentModel}`);
+
+          // Immediate fallback on quota limit (429) or on 2 overloads
+          if (!hasSwitchedToFallback && (quotaExceeded || overloadCount >= 2 || attempt >= 2)) {
+            hasSwitchedToFallback = true;
+            currentModel = fallbackModel;
+            attempt = 0;
+            continue;
+          }
+
+          if (attempt > MAX_RETRIES) {
+            return res.status(500).json({
+              error: true,
+              message: formatGeminiError(err),
+            });
+          }
+
+          const delayMs = 1000 * Math.pow(2, attempt - 1);
+          await new Promise((resolve) => setTimeout(resolve, delayMs));
+        }
       }
+      return;
     }
 
-    // Mode B: Server-Sent Events (SSE) Streaming
+    // Mode B: Server-Sent Events (SSE) Streaming with generateContentStream, Exponential Backoff, and Model Fallback
     res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
@@ -495,73 +576,110 @@ FORMATTING & RESPONSE RULES (MANDATORY):
       }
     };
 
-    try {
-      let responseStream;
+    let currentModel = primaryModel;
+    let hasSwitchedToFallback = currentModel === fallbackModel;
+    let overloadCount = 0;
+    let attempt = 0;
+    let hasStreamedAnyChunks = false;
 
+    while (attempt <= MAX_RETRIES) {
       try {
-        responseStream = await ai.models.generateContentStream({
-          model: selectedModel,
+        console.log(`[Omni AI Stream] Starting stream with ${currentModel} (Attempt ${attempt + 1}/${MAX_RETRIES + 1})...`);
+
+        const responseStream = await ai.models.generateContentStream({
+          model: currentModel,
           contents,
           config: {
             systemInstruction,
             thinkingConfig: {
-              thinkingLevel: level,
+              thinkingLevel: currentModel === fallbackModel ? ThinkingLevel.LOW : level,
             },
           },
         });
-      } catch (initialErr: any) {
-        const rawErr = String(initialErr?.message || '');
-        if (
-          (rawErr.includes('429') || rawErr.includes('RESOURCE_EXHAUSTED') || rawErr.includes('Quota exceeded')) &&
-          selectedModel === 'gemini-3.8-flash'
-        ) {
-          console.warn('[Omni AI] 3.8-flash quota exceeded. Switching to 3.5-flash-lite automatically...');
+
+        for await (const chunk of responseStream) {
+          const candidate = chunk.candidates?.[0];
+          const parts = candidate?.content?.parts;
+
+          if (parts && parts.length > 0) {
+            for (const part of parts) {
+              if ((part as any).thought) {
+                sendSSE({ type: 'thought', text: part.text || '' });
+              } else if (part.text) {
+                hasStreamedAnyChunks = true;
+                sendSSE({ type: 'chunk', text: part.text });
+              }
+            }
+          } else if (chunk.text) {
+            hasStreamedAnyChunks = true;
+            sendSSE({ type: 'chunk', text: chunk.text });
+          }
+        }
+
+        sendSSE({ type: 'done', model: currentModel === fallbackModel ? 'Omni Flash' : 'Omni 5.5' });
+        res.end();
+        return;
+      } catch (err: any) {
+        attempt++;
+        const quotaExceeded = isQuotaExceeded(err);
+        const is503OrOverload = isOverloadedOr503(err);
+
+        if (quotaExceeded) {
+          quotaExhaustedModels.add(currentModel);
+        }
+        if (is503OrOverload) {
+          overloadCount++;
+        }
+
+        console.log(`[Omni AI Stream] Retry handling on attempt ${attempt}/${MAX_RETRIES} (Model: ${currentModel})`);
+
+        // If chunks were already emitted to client, abort cleanly with error
+        if (hasStreamedAnyChunks) {
+          sendSSE({
+            type: 'error',
+            message: formatGeminiError(err),
+          });
+          res.end();
+          return;
+        }
+
+        // Model Fallback Logic:
+        // Switch to Fallback Model (Omni Flash) immediately on Quota Exceeded (429) OR if Overload >= 2 times
+        if (!hasSwitchedToFallback && (quotaExceeded || overloadCount >= 2 || attempt >= 2)) {
+          hasSwitchedToFallback = true;
+          const prevModel = currentModel;
+          currentModel = fallbackModel;
+          attempt = 0; // Reset attempt so fallback model gets its full retry budget
+
+          console.log(`[Omni AI Stream] Switched from ${prevModel} to Fallback Model ${fallbackModel}`);
+
           sendSSE({
             type: 'thought',
-            text: '⚠️ ម៉ូដែល Gemini 3.8 Flash បានដល់កម្រិតកំណត់កូតាឥតគិតថ្លៃប្រចាំថ្ងៃ។ ប្រព័ន្ធកំពុងប្តូរទៅម៉ូដែល Gemini 3.5 Flash-Lite ដោយស្វ័យប្រវត្ត...\n\n',
+            text: `\n\n⚡ ដំណើរការប្តូរស្វ័យប្រវត្តិទៅប្រើម៉ូដែលបម្រុង (Omni Flash) ដើម្បីឆ្លើយតបយ៉ាងរហ័សទាន់ចិត្ត...\n\n`,
           });
-          selectedModel = 'gemini-3.1-flash-lite';
-          responseStream = await ai.models.generateContentStream({
-            model: selectedModel,
-            contents,
-            config: {
-              systemInstruction,
-              thinkingConfig: {
-                thinkingLevel: ThinkingLevel.LOW,
-              },
-            },
+
+          // Continue immediately without backoff delay
+          continue;
+        }
+
+        if (attempt > MAX_RETRIES) {
+          sendSSE({
+            type: 'error',
+            message: formatGeminiError(err),
           });
-        } else {
-          throw initialErr;
+          res.end();
+          return;
         }
+
+        // Exponential Backoff: 1s -> 2s -> 4s
+        const delayMs = 1000 * Math.pow(2, attempt - 1);
+        sendSSE({
+          type: 'thought',
+          text: `🔄 កំពុងភ្ជាប់ឡើងវិញដោយស្វ័យប្រវត្តិ (Exponential Backoff: ${delayMs / 1000} វិនាទី - លើកទី ${attempt}/${MAX_RETRIES})...\n`,
+        });
+
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
-
-      for await (const chunk of responseStream) {
-        const candidate = chunk.candidates?.[0];
-        const parts = candidate?.content?.parts;
-
-        if (parts && parts.length > 0) {
-          for (const part of parts) {
-            if ((part as any).thought) {
-              sendSSE({ type: 'thought', text: part.text || '' });
-            } else if (part.text) {
-              sendSSE({ type: 'chunk', text: part.text });
-            }
-          }
-        } else if (chunk.text) {
-          sendSSE({ type: 'chunk', text: chunk.text });
-        }
-      }
-
-      sendSSE({ type: 'done' });
-      res.end();
-    } catch (err: any) {
-      console.error('Streaming Gemini generation error:', err);
-      sendSSE({
-        type: 'error',
-        message: formatGeminiError(err),
-      });
-      res.end();
     }
   });
 
