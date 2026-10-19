@@ -36,6 +36,41 @@ function getChatGroup(timestamp: number): 'today' | 'yesterday' | 'previous7' {
   return 'previous7';
 }
 
+// Strict Prohibition of Gemini and Custom High-Traffic Error Message
+export function formatOmniError(errorMsg?: string): string {
+  if (!errorMsg) {
+    return 'Omni AI is currently experiencing high traffic. Please switch to Omni Flash or try again later.';
+  }
+
+  const lower = errorMsg.toLowerCase();
+  if (
+    lower.includes('gemini') ||
+    lower.includes('quota') ||
+    lower.includes('rate limit') ||
+    lower.includes('resource_exhausted') ||
+    lower.includes('429') ||
+    lower.includes('503') ||
+    lower.includes('overload') ||
+    lower.includes('unavailable')
+  ) {
+    return 'Omni AI is currently experiencing high traffic. Please switch to Omni Flash or try again later.';
+  }
+
+  return errorMsg.replace(/gemini/gi, 'Omni AI');
+}
+
+// Vibration API (navigator.vibrate) for subtle tactile notification upon response completion
+export function triggerCompletionHaptic(): void {
+  try {
+    if (typeof window !== 'undefined' && 'navigator' in window && typeof navigator.vibrate === 'function') {
+      // Short subtle vibration (50ms)
+      navigator.vibrate(50);
+    }
+  } catch (err) {
+    // Graceful fallback if device lacks vibration hardware or permission
+  }
+}
+
 // Strict Directives: Robust detection of Image Generation requests in Khmer and English
 export function detectImageIntent(text: string, mode?: string): { isImage: boolean; cleanPrompt: string } {
   if (mode === 'image') return { isImage: true, cleanPrompt: text.trim() };
@@ -130,8 +165,8 @@ export function detectVideoIntent(text: string, mode?: string): { isVideo: boole
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [activeView, setActiveView] = useState<ActiveView>('chat');
-  const [selectedModel, setSelectedModel] = useState<GeminiModelType>('3.8-flash');
-  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelType>('high');
+  const [selectedModel, setSelectedModel] = useState<GeminiModelType>('3.5-flash-lite');
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevelType>('low');
   const [isTemporaryChat, setIsTemporaryChat] = useState(false);
   const [currentChatId, setCurrentChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -281,6 +316,23 @@ export default function App() {
 
     const aiMessageId = Math.random().toString(36).substring(7);
 
+    // Strict Language Directive: Prohibit Thai language recognition or generation
+    const isThaiInput =
+      /[\u0E00-\u0E7F]/.test(trimmedText) ||
+      /(ភាសាថៃ|ភាសាសៀម|បកប្រែជាភាសាថៃ|បកប្រែជាថៃ|និយាយថៃ|រៀនថៃ|អក្សរថៃ|\bthai\s+language\b|\bin\s+thai\b|\bto\s+thai\b|\bspeak\s+thai\b|\btranslate\s+to\s+thai\b|\bwrite\s+in\s+thai\b)/i.test(trimmedText);
+
+    if (isThaiInput) {
+      const thaiRefusalMessage: Message = {
+        id: aiMessageId,
+        sender: 'system',
+        content: 'ខ្ញុំមិនចេះភាសាថៃទេ',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        generationType: 'text',
+      };
+      setMessages((prev) => [...prev, thaiRefusalMessage]);
+      return;
+    }
+
     // -------------------------------------------------------------------------
     // Route 1: Image Generation Intent (Strict Directives: Produce Actual Image)
     // -------------------------------------------------------------------------
@@ -332,6 +384,7 @@ export default function App() {
               : m
           )
         );
+        triggerCompletionHaptic();
       } catch (err: any) {
         console.error('Image generation error in chat:', err);
         setMessages((prev) =>
@@ -339,7 +392,7 @@ export default function App() {
             m.id === aiMessageId
               ? {
                   ...m,
-                  content: err?.message || 'មានបញ្ហាក្នុងការបង្កើតរូបភាព។',
+                  content: formatOmniError(err?.message),
                   error: true,
                   isStreaming: false,
                 }
@@ -433,6 +486,7 @@ export default function App() {
               : m
           )
         );
+        triggerCompletionHaptic();
       } catch (err: any) {
         console.warn('Video generation error/demo fallback in chat:', err);
         const errMsg = err?.message || '';
@@ -442,9 +496,13 @@ export default function App() {
             m.id === aiMessageId
               ? {
                   ...m,
-                  content: errMsg.includes('Quota') || errMsg.includes('429') || errMsg.includes('403')
-                    ? `⚠️ សេវាកម្មបង្កើតវីដេអូមានបន្ទុកខ្ពស់ជាបណ្តោះអាសន្ន។ នេះជាវីដេអូគំរូសម្រាប់ទស្សនា៖`
-                    : `មានបញ្ហាក្នុងការបង្កើតវីដេអូ៖ ${errMsg}`,
+                  content:
+                    errMsg.includes('Quota') ||
+                    errMsg.includes('429') ||
+                    errMsg.includes('403') ||
+                    errMsg.toLowerCase().includes('gemini')
+                      ? 'Omni AI is currently experiencing high traffic. Please switch to Omni Flash or try again later.'
+                      : `មានបញ្ហាក្នុងការបង្កើតវីដេអូ៖ ${formatOmniError(errMsg)}`,
                   generatedVideo: {
                     url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
                     prompt: cleanPrompt,
@@ -562,7 +620,7 @@ export default function App() {
                   )
                 );
               } else if (event.type === 'error') {
-                const errMsg = event.message || 'កំហុសពីប្រព័ន្ធ Omni AI';
+                const errMsg = formatOmniError(event.message);
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === aiMessageId
@@ -669,6 +727,7 @@ export default function App() {
       setMessages((prev) =>
         prev.map((m) => (m.id === aiMessageId ? { ...m, isStreaming: false } : m))
       );
+      triggerCompletionHaptic();
     } catch (primaryError: any) {
       console.warn('Streaming failed, attempting JSON fallback...', primaryError);
 
@@ -689,7 +748,10 @@ export default function App() {
 
         if (fallbackRes.ok) {
           const data = await fallbackRes.json();
-          const content = data.content || 'មិនមានចម្លើយត្រឡប់មកវិញ។';
+          let content = data.content || 'មិនមានចម្លើយត្រឡប់មកវិញ។';
+          if (data.error || /gemini|quota|429|503|overload/i.test(content)) {
+            content = formatOmniError(content);
+          }
 
           // Check if JSON response contained dalle/image action
           const jsonActionMatch = content.match(/\{[\s\S]*?"action"\s*:\s*"(?:dalle\.text2im|dalle|generate_image|image)"[\s\S]*?\}/i);
@@ -761,6 +823,7 @@ export default function App() {
                 : m
             )
           );
+          triggerCompletionHaptic();
           return;
         }
       } catch (fallbackErr) {
@@ -770,8 +833,7 @@ export default function App() {
       const isTimeout = primaryError?.name === 'AbortError';
       const displayMsg = isTimeout
         ? 'ការតភ្ជាប់លើសពេលវេលាកំណត់ (Timeout)។ សូមព្យាយាមម្តងទៀត។'
-        : primaryError?.message ||
-          'មិនអាចភ្ជាប់ទៅកាន់ប្រព័ន្ធ Omni AI បានទេ។ សូមព្យាយាមម្តងទៀត។';
+        : formatOmniError(primaryError?.message);
 
       setMessages((prev) =>
         prev.map((m) =>
@@ -834,6 +896,7 @@ export default function App() {
           onSelectThinkingLevel={setThinkingLevel}
           isTemporaryChat={isTemporaryChat}
           onToggleTemporaryChat={() => setIsTemporaryChat(!isTemporaryChat)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
         />
 
         {/* View Router */}

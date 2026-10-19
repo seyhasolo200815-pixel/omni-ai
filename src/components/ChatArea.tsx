@@ -22,6 +22,7 @@ import {
 import { marked } from 'marked';
 import { Composer, AttachedItem } from './Composer';
 import { OmniLogo } from './OmniLogo';
+import { playTeacherSpeech, stopSpeech } from '../utils/tts';
 
 export interface GeneratedImageData {
   url: string;
@@ -88,20 +89,26 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // Clean up any active speech on unmount
+  useEffect(() => {
+    return () => {
+      stopSpeech();
+    };
+  }, []);
+
   const handleSpeak = (text: string, id: string) => {
-    if ('speechSynthesis' in window) {
-      if (speakingId === id) {
-        window.speechSynthesis.cancel();
-        setSpeakingId(null);
-        return;
-      }
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.onend = () => setSpeakingId(null);
-      utterance.onerror = () => setSpeakingId(null);
-      setSpeakingId(id);
-      window.speechSynthesis.speak(utterance);
+    if (speakingId === id) {
+      stopSpeech();
+      setSpeakingId(null);
+      return;
     }
+
+    setSpeakingId(id);
+    playTeacherSpeech(text, {
+      onStart: () => setSpeakingId(id),
+      onEnd: () => setSpeakingId(null),
+      onError: () => setSpeakingId(null),
+    });
   };
 
   const toggleThought = (id: string) => {
@@ -173,7 +180,7 @@ export const ChatArea: React.FC<ChatAreaProps> = ({
                         )}
 
                         {/* User Message Bubble */}
-                        <div className="bg-[#f0f0f2] text-black font-semibold rounded-[20px] px-4 py-2.5 text-[15px] leading-relaxed shadow-2xs inline-block text-left break-words">
+                        <div className="bg-[#f0f0f2] text-black font-medium rounded-[20px] px-4 py-2.5 text-base sm:text-[16.5px] leading-relaxed shadow-2xs inline-block text-left break-words">
                           {msg.content}
                         </div>
 
@@ -371,9 +378,11 @@ const AssistantMessageItem: React.FC<AssistantMessageItemProps> = ({
 
         {/* Error Notice */}
         {msg.error && (
-          <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 font-medium flex items-center gap-2.5">
-            <AlertCircle size={16} className="shrink-0 text-red-600" />
-            <span>{msg.content}</span>
+          <div className="p-3.5 bg-red-50/90 border border-red-200 rounded-xl text-xs text-red-800 font-medium flex items-start gap-2.5 min-w-0 max-w-full overflow-hidden shadow-2xs">
+            <AlertCircle size={16} className="shrink-0 text-red-600 mt-0.5" />
+            <div className="flex-1 min-w-0 break-words whitespace-pre-wrap leading-relaxed">
+              {msg.content}
+            </div>
           </div>
         )}
 
@@ -439,13 +448,13 @@ const AssistantMessageItem: React.FC<AssistantMessageItemProps> = ({
         {!msg.error && msg.content && (
           <div className="relative">
             <div
-              className="text-[15.5px] leading-relaxed text-zinc-900 font-medium prose prose-zinc max-w-none break-words"
+              className="text-base sm:text-[17px] leading-[1.8] text-zinc-900 font-normal prose prose-zinc max-w-none break-words"
               dangerouslySetInnerHTML={{
                 __html: marked.parse(msg.content),
               }}
             />
             {msg.isStreaming && (
-              <span className="inline-block w-1.5 h-4 bg-blue-600 ml-1 animate-pulse align-middle rounded-xs" />
+              <span className="inline-block w-1.5 h-4.5 bg-blue-600 ml-1 animate-pulse align-middle rounded-xs" />
             )}
           </div>
         )}
@@ -547,9 +556,11 @@ const VideoMessageCard: React.FC<{ videoData: GeneratedVideoData }> = ({ videoDa
 
   if (videoData.status === 'error') {
     return (
-      <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800 font-medium flex items-center gap-2.5 max-w-lg">
-        <AlertCircle size={16} className="text-red-600 shrink-0" />
-        <span>{videoData.error || 'មានបញ្ហាក្នុងការបង្កើតវីដេអូ'}</span>
+      <div className="p-3.5 bg-red-50/90 border border-red-200 rounded-xl text-xs text-red-800 font-medium flex items-start gap-2.5 max-w-lg min-w-0 overflow-hidden shadow-2xs">
+        <AlertCircle size={16} className="text-red-600 shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0 break-words whitespace-pre-wrap leading-relaxed">
+          {videoData.error || 'មានបញ្ហាក្នុងការបង្កើតវីដេអូ'}
+        </div>
       </div>
     );
   }

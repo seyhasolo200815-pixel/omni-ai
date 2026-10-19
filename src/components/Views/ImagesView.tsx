@@ -276,9 +276,11 @@ export const ImagesView: React.FC<ImagesViewProps> = ({ onBackToChat }) => {
 
           {/* Error Message */}
           {error && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex items-center gap-2">
-              <AlertCircle size={15} className="shrink-0 text-red-600" />
-              <span>{error}</span>
+            <div className="p-3 bg-red-50/90 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex items-start gap-2.5 min-w-0 max-w-full overflow-hidden shadow-2xs">
+              <AlertCircle size={15} className="shrink-0 text-red-600 mt-0.5" />
+              <div className="flex-1 min-w-0 break-words whitespace-pre-wrap leading-relaxed">
+                {error}
+              </div>
             </div>
           )}
 

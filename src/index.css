@@ -68,8 +68,8 @@
    ========================================================================== */
 .prose {
   color: var(--color-text-primary);
-  line-height: 1.75;
-  font-size: 0.965rem;
+  line-height: 1.8;
+  font-size: 1.0625rem; /* ~17px, standard comfortable mobile reading size */
   max-width: 100%;
 }
 
@@ -80,35 +80,35 @@
   letter-spacing: -0.02em;
   margin-top: 1.6rem;
   margin-bottom: 0.8rem;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .prose h1 {
-  font-size: 1.55rem;
+  font-size: 1.65rem;
   padding-bottom: 0.35rem;
   border-bottom: 1.5px solid #e4e4e7;
 }
 
 .prose h2 {
-  font-size: 1.32rem;
+  font-size: 1.38rem;
   padding-bottom: 0.25rem;
   border-bottom: 1px solid #f4f4f5;
 }
 
 .prose h3 {
-  font-size: 1.15rem;
+  font-size: 1.22rem;
 }
 
 .prose h4 {
-  font-size: 1.05rem;
+  font-size: 1.1rem;
 }
 
 /* Paragraphs */
 .prose p {
   color: #18181b;
   font-weight: 450;
-  margin-bottom: 1.15rem;
-  line-height: 1.75;
+  margin-bottom: 1.25rem;
+  line-height: 1.8;
 }
 
 .prose p:last-child {

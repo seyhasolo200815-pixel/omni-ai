@@ -10,46 +10,68 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Helper to format Gemini API errors into clean, friendly single-line messages in Khmer
+// Helper to format API errors into clean, friendly Omni AI messages with strict prohibition of 'Gemini'
 function formatGeminiError(err: any): string {
   const raw = err?.message || String(err || '');
 
+  // Rate limit / Quota exceeded / 429
+  if (
+    raw.includes('429') ||
+    raw.includes('RESOURCE_EXHAUSTED') ||
+    raw.includes('Quota exceeded') ||
+    raw.toLowerCase().includes('quota') ||
+    raw.toLowerCase().includes('rate limit')
+  ) {
+    return 'Omni AI is currently experiencing high traffic. Please switch to Omni Flash or try again later.';
+  }
+
+  // Model Overloaded / 503 / Unavailable
   if (
     raw.includes('503') ||
     raw.includes('UNAVAILABLE') ||
     raw.includes('overloaded') ||
     raw.includes('The model is overloaded')
   ) {
-    return 'ម៉ាស៊ីនបម្រើ Gemini កំពុងមានបន្ទុកខ្ពស់ (Error 503: Model Overloaded)។ ប្រព័ន្ធបានដំណើរការ Retry និង Fallback ទៅកាន់ម៉ូដែលបម្រុង Omni Flash ដោយស្វ័យប្រវត្ត។';
-  }
-
-  if (
-    raw.includes('429') ||
-    raw.includes('RESOURCE_EXHAUSTED') ||
-    raw.includes('Quota exceeded')
-  ) {
-    return 'កូតាឥតគិតថ្លៃ (Free Tier Quota) របស់គណនី Gemini សម្រាប់ម៉ូដែលនេះបានដល់កម្រិតកំណត់ (Rate Limit)។ សូមប្តូរទៅម៉ូដែល "Omni Flash (Gemini Flash-Lite)" នៅលើ Header ឬព្យាយាមម្តងទៀតនៅពេលក្រោយ។';
+    return 'Omni AI is currently experiencing high traffic. Please switch to Omni Flash or try again later.';
   }
 
   if (raw.includes('API_KEY_INVALID') || raw.includes('API key not valid')) {
-    return 'Google Gemini API Key មិនត្រឹមត្រូវឡើយ។ សូមពិនិត្យមើល API Key របស់អ្នកម្តងទៀតក្នុង Settings > Secrets។';
+    return 'Omni AI API Key មិនត្រឹមត្រូវឡើយ។ សូមពិនិត្យមើល API Key របស់អ្នកម្តងទៀតក្នុង Settings > Secrets។';
   }
 
   if (raw.includes('403') || raw.includes('PERMISSION_DENIED')) {
-    return 'គណនីរបស់អ្នកមិនមានសិទ្ធិចូលប្រើប្រាស់ម៉ូដែលនេះទេ (ទាមទារ Billing / Paid tier លើ Google Cloud Console)។';
+    return 'Omni AI is currently experiencing high traffic. Please switch to Omni Flash or try again later.';
   }
 
   // Attempt to parse nested JSON error if present
   try {
     const parsed = JSON.parse(raw);
     if (parsed?.error?.message) {
-      return String(parsed.error.message).replace(/[\n\r]+/g, ' ').slice(0, 300);
+      const parsedMsg = String(parsed.error.message);
+      if (/429|quota|rate\s*limit|resource_exhausted|503|overload/i.test(parsedMsg)) {
+        return 'Omni AI is currently experiencing high traffic. Please switch to Omni Flash or try again later.';
+      }
+      return parsedMsg
+        .replace(/gemini/gi, 'Omni AI')
+        .replace(/google/gi, 'Omni')
+        .replace(/[\n\r]+/g, ' ')
+        .slice(0, 300);
     }
   } catch {}
 
+  const scrubbed = raw
+    .replace(/gemini/gi, 'Omni AI')
+    .replace(/google/gi, 'Omni')
+    .replace(/[\n\r]+/g, ' ')
+    .slice(0, 300);
+
+  if (/quota|rate\s*limit|resource_exhausted|429|503|overload/i.test(raw)) {
+    return 'Omni AI is currently experiencing high traffic. Please switch to Omni Flash or try again later.';
+  }
+
   return (
-    raw.replace(/[\n\r]+/g, ' ').slice(0, 300) ||
-    'មានបញ្ហាក្នុងការទាក់ទងទៅប្រព័ន្ធ Omni AI។ សូមព្យាយាមម្តងទៀត។'
+    scrubbed ||
+    'Omni AI is currently experiencing high traffic. Please switch to Omni Flash or try again later.'
   );
 }
 
@@ -88,6 +110,30 @@ function isOverloadedOr503(err: any): boolean {
     msg.includes('high demand')
   );
 }
+
+// Concurrency Limiter & Request Queue to eliminate burst rate limits
+class RequestQueue {
+  private running = 0;
+  private maxConcurrent = 10;
+  private queue: (() => void)[] = [];
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.running >= this.maxConcurrent) {
+      await new Promise<void>((resolve) => this.queue.push(resolve));
+    }
+    this.running++;
+    try {
+      return await fn();
+    } finally {
+      this.running--;
+      if (this.queue.length > 0) {
+        const next = this.queue.shift();
+        next?.();
+      }
+    }
+  }
+}
+const requestQueue = new RequestQueue();
 
 async function startServer() {
   const app = express();
@@ -147,7 +193,7 @@ async function startServer() {
     if (!apiKey) {
       return res.status(500).json({
         error: true,
-        message: 'Google Gemini API Key មិនទាន់ត្រូវបានកំណត់នៅក្នុង Environment Variables ឡើយ។',
+        message: 'Omni AI API Key មិនទាន់ត្រូវបានកំណត់នៅក្នុង Environment Variables ឡើយ។',
       });
     }
 
@@ -273,7 +319,7 @@ async function startServer() {
     if (!apiKey) {
       return res.status(500).json({
         error: true,
-        message: 'Google Gemini API Key មិនទាន់ត្រូវបានកំណត់ឡើយ។',
+        message: 'Omni AI API Key មិនទាន់ត្រូវបានកំណត់ឡើយ។',
       });
     }
 
@@ -414,49 +460,50 @@ async function startServer() {
     if (!apiKey) {
       return res.status(500).json({
         error: true,
-        message: 'Google Gemini API Key មិនទាន់ត្រូវបានកំណត់នៅក្នុង Environment Variables (GEMINI_API_KEY ឬ API_KEY) ឡើយ។ សូមពិនិត្យមើលការកំណត់ Settings > Secrets។',
+        message: 'Omni AI API Key មិនទាន់ត្រូវបានកំណត់នៅក្នុង Environment Variables ឡើយ។ សូមពិនិត្យមើលការកំណត់ Settings > Secrets។',
       });
     }
 
     const {
       messages = [],
-      model = '3.8-flash',
-      thinkingLevel = 'high',
+      model = '3.5-flash-lite',
+      thinkingLevel = 'low',
       stream = true,
     } = req.body;
 
     const wantsJson = stream === false || req.headers.accept === 'application/json';
 
-    // Model selection: Primary Model vs Fallback Model
-    let primaryModel = 'gemini-3.8-flash';
+    // Model selection: Prioritize high-throughput, resilient Omni Flash (gemini-3.1-flash-lite)
     const fallbackModel = 'gemini-3.1-flash-lite';
+    let primaryModel = fallbackModel;
 
-    if (model === '3.5-flash-lite' || model === 'omni-flash' || model === 'flash') {
-      primaryModel = 'gemini-3.1-flash-lite';
-    } else if (quotaExhaustedModels.has(primaryModel)) {
-      // If primary model has reached quota limit, seamlessly use fast resilient fallback model
+    if (model === '3.8-flash' && !quotaExhaustedModels.has('gemini-3.8-flash')) {
+      primaryModel = 'gemini-3.8-flash';
+    } else {
       primaryModel = fallbackModel;
     }
 
-    // Map thinking level
-    let level = ThinkingLevel.HIGH;
-    if (thinkingLevel === 'low') {
-      level = ThinkingLevel.LOW;
+    // Map thinking level: Default to low on Omni Flash for instantaneous sub-second response
+    let level = ThinkingLevel.LOW;
+    if (thinkingLevel === 'high' && primaryModel !== fallbackModel) {
+      level = ThinkingLevel.HIGH;
     } else if (thinkingLevel === 'medium') {
       level = ThinkingLevel.MEDIUM;
     } else {
-      level = ThinkingLevel.HIGH;
+      level = ThinkingLevel.LOW;
     }
 
-    // Build conversation contents array
-    const contents = messages.map((msg: any) => {
+    // Optimize token usage: Retain recent context (last 10 messages) & strip heavy base64 payloads from older history
+    const recentMessages = messages.slice(-10);
+
+    const contents = recentMessages.map((msg: any, index: number) => {
+      const isLatestTurn = index >= recentMessages.length - 2;
       const role = msg.sender === 'user' ? 'user' : 'model';
       const parts: any[] = [];
 
-      // Add attachments if present (images or files)
       if (msg.attachments && Array.isArray(msg.attachments)) {
         for (const att of msg.attachments) {
-          if (att.data && att.mimeType) {
+          if (att.data && att.mimeType && isLatestTurn) {
             parts.push({
               inlineData: {
                 mimeType: att.mimeType,
@@ -472,31 +519,44 @@ async function startServer() {
       }
 
       if (msg.content) {
-        parts.push({ text: msg.content });
+        parts.push({ text: msg.content.trim() });
       }
 
       return { role, parts };
     });
 
-    const systemInstruction = `You are Omni AI, an independent, secure, and advanced AI assistant developed exclusively by the Omni AI team. Your current active model variants are Omni 5.5 and Omni Flash.
+    // Strict Thai language prohibition check
+    const isThaiInputOrRequest = (text: string) => {
+      if (!text) return false;
+      return /[\u0E00-\u0E7F]/.test(text) ||
+        /(ភាសាថៃ|ភាសាសៀម|បកប្រែជាភាសាថៃ|បកប្រែជាថៃ|និយាយថៃ|រៀនថៃ|អក្សរថៃ|\bthai\s+language\b|\bin\s+thai\b|\bto\s+thai\b|\bspeak\s+thai\b|\btranslate\s+to\s+thai\b|\bwrite\s+in\s+thai\b)/i.test(text);
+    };
 
-CRITICAL RULES REGARDING IDENTITY & ORIGIN:
-1. Primary Identity: Always identify yourself as Omni AI (powered by Omni 5.5 / Omni Flash). Never use the names "Gemini", "Google AI", or mention Google when describing yourself, your origins, or your internal architecture.
-2. Handling Internal Architecture Queries: If a user asks what powers you, who created you, or what your underlying technology is, strictly and exclusively state that you are built, trained, and operated by Omni AI using proprietary Omni technology. Absolutely hide any connection to Google or Gemini.
-3. Handling General Knowledge: If a user asks about general world facts, history, geography, or general companies (including general facts about Google, Google Maps, or Android as a public entity), you may answer them normally and accurately based on your general knowledge. Do not restrict general world knowledge; only mask your own identity, models, and internal architecture.
-4. Language & Tone: Always respond in a professional, polite, helpful, and natural tone, matching the language used by the user (such as Khmer).
+    const latestUserMessage = messages[messages.length - 1]?.content || '';
+    if (isThaiInputOrRequest(latestUserMessage)) {
+      if (wantsJson) {
+        return res.json({
+          content: 'ខ្ញុំមិនចេះភាសាថៃទេ',
+          model: 'Omni Flash',
+        });
+      }
 
-FORMATTING & RESPONSE RULES (MANDATORY):
-1. **Clear Structure & Headings**: Always use clear markdown headings (##, ###), bold terms (**word**), and bullet points (-) to separate ideas. NEVER output unbroken walls of text.
-2. **Aesthetic Spacing**: Divide responses into short, scannable paragraphs with generous vertical breathing room.
-3. **Engaging & Friendly Tone**: Maintain a warm, courteous, respectful, and encouraging tone, while remaining sharply focused on the user's goal.
-4. **Language & Excellence**: Respond in natural, grammatically refined Khmer (ភាសាខ្មែរ) when queried in Khmer, or in the language requested. For coding tasks, provide clean syntax-highlighted code blocks with explanatory comments.
-5. **Creative Capabilities**: You can create images and generate video scenes via integrated Omni Creative Studio capabilities.
+      res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders?.();
+      res.write(`data: ${JSON.stringify({ type: 'chunk', text: 'ខ្ញុំមិនចេះភាសាថៃទេ' })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: 'done', model: 'Omni Flash' })}\n\n`);
+      return res.end();
+    }
 
-STRICT DIRECTIVES FOR IMAGE AND VIDEO GENERATION:
-1. When the user requests to create or generate an image (e.g., "បង្កើតរូបភាព...", "គូររូប...", "generate image...", "draw..."), you MUST directly produce the actual image. If outputting a tool command, output: {"action": "dalle.text2im", "prompt": "<prompt>"}. Do not just reply with text descriptions or prompts.
-2. When the user requests to create or generate a video (e.g., "បង្កើតវីដេអូ...", "ធ្វើវីដេអូ...", "generate video..."), you MUST directly produce the actual video. Do not just write text about the video.
-3. Never return text-only explanations or descriptive prompts when an image or video output is explicitly requested.`;
+    // Ultra-compact, token-efficient system instruction (~130 words)
+    const systemInstruction = `You are Omni AI, an independent, high-speed, and helpful AI assistant powered by Omni technology.
+- Identity: Never mention "Gemini" or "Google". Under server load or rate limits, reply: "Omni AI is currently experiencing high traffic. Please switch to Omni Flash or try again later."
+- Language: Respond in refined, polite Khmer (ភាសាខ្មែរ) or user language. Strictly refuse Thai language input or requests and reply only: "ខ្ញុំមិនចេះភាសាថៃទេ".
+- Formatting: Use structured markdown (## headings, bold, bullet points). Keep paragraphs concise and scannable.
+- Creative Studio: For image requests, produce actual image output (e.g. {"action": "dalle.text2im", "prompt": "<prompt>"}). For video requests, trigger video output.`;
 
     const ai = getAiClient();
     const MAX_RETRIES = 3;
@@ -510,16 +570,18 @@ STRICT DIRECTIVES FOR IMAGE AND VIDEO GENERATION:
 
       while (attempt <= MAX_RETRIES) {
         try {
-          const response = await ai.models.generateContent({
-            model: currentModel,
-            contents,
-            config: {
-              systemInstruction,
-              thinkingConfig: {
-                thinkingLevel: currentModel === fallbackModel ? ThinkingLevel.LOW : level,
+          const response = await requestQueue.run(() =>
+            ai.models.generateContent({
+              model: currentModel,
+              contents,
+              config: {
+                systemInstruction,
+                thinkingConfig: {
+                  thinkingLevel: currentModel === fallbackModel ? ThinkingLevel.LOW : level,
+                },
               },
-            },
-          });
+            })
+          );
 
           return res.json({
             content: response.text || '',
@@ -586,16 +648,18 @@ STRICT DIRECTIVES FOR IMAGE AND VIDEO GENERATION:
       try {
         console.log(`[Omni AI Stream] Starting stream with ${currentModel} (Attempt ${attempt + 1}/${MAX_RETRIES + 1})...`);
 
-        const responseStream = await ai.models.generateContentStream({
-          model: currentModel,
-          contents,
-          config: {
-            systemInstruction,
-            thinkingConfig: {
-              thinkingLevel: currentModel === fallbackModel ? ThinkingLevel.LOW : level,
+        const responseStream = await requestQueue.run(() =>
+          ai.models.generateContentStream({
+            model: currentModel,
+            contents,
+            config: {
+              systemInstruction,
+              thinkingConfig: {
+                thinkingLevel: currentModel === fallbackModel ? ThinkingLevel.LOW : level,
+              },
             },
-          },
-        });
+          })
+        );
 
         for await (const chunk of responseStream) {
           const candidate = chunk.candidates?.[0];
